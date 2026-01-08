@@ -12,7 +12,7 @@ uv pip install -e '.[dev]'
 
 ## CLI Usage
 
-The project provides a unified CLI interface through `cli.py` with three main subcommands: `rankings`, `honest-reports`, and `strategic-reports`.
+The project provides a unified CLI interface through `cli.py` with four main subcommands: `rankings`, `honest-reports`, `strategic-reports`, and `proportions`.
 
 ### Basic Usage
 
@@ -24,6 +24,7 @@ uv run python cli.py <command> [options]
 uv run python -m cli.rankings_cli [options]
 uv run python -m cli.honest_reports_cli [options]
 uv run python -m cli.strategic_reports_cli [options]
+uv run python -m cli.proportions_cli [options]
 ```
 
 ### Command: `rankings`
@@ -176,6 +177,66 @@ Both metrics measure how different two rankings are, but use different approache
 - `--alphabetical` (flag): Output rankings in alphabetical format instead of integer tuples
 - `--plot` (flag): Display a visual heatmap showing voter strategy evolution over T+1 time steps (including initial honest reports)
 
+### Command: `proportions`
+
+Visualize probability distributions as proportion plots (stacked area charts). This command aggregates reported rankings into probability distributions over candidates and displays them as stacked area charts. It supports both single election outcomes and evolution over T iterations when combined with strategic reports.
+
+#### Basic Examples
+
+```bash
+# Single election - visualize probability distribution for one set of rankings
+uv run python cli.py proportions --m 3 --n 6 --seed 42
+
+# Strategic reports over T iterations - see how probabilities evolve over time
+uv run python cli.py proportions --m 3 --n 6 --T 5 --anchor 0.5
+
+# With baselines - use specific baseline rankings
+uv run python cli.py proportions --m 3 --baselines "0*5,3*5,4*5" --T 10
+
+# Custom aggregation mechanism
+uv run python cli.py proportions --m 3 --n 6 --T 5 --anchor 0.5 --mechanism pairwise_majority
+
+# Custom title for the plot
+uv run python cli.py proportions --m 3 --n 6 --T 5 --anchor 0.5 --title "Election Evolution"
+
+# Show integer labels instead of alphabetical
+uv run python cli.py proportions --m 3 --n 6 --seed 42 --show-integers
+```
+
+#### Modes
+
+The `proportions` command operates in two modes:
+
+1. **Single Election Mode** (when `--T` is not provided):
+   - Generates one set of rankings and aggregates them into a probability distribution
+   - Shows a single stacked area chart with candidate probabilities
+   - Useful for analyzing a single election outcome
+
+2. **Strategic Reports Mode** (when `--T` is provided):
+   - Generates strategic reports that evolve over T iterations
+   - Aggregates rankings at each time step to get probability distributions
+   - Shows evolution of candidate probabilities over time as a stacked area chart
+   - Useful for analyzing how voting outcomes change as voters' strategies evolve
+
+#### Aggregation Mechanism
+
+The `--mechanism` parameter selects how to aggregate rankings into probabilities:
+
+- **pairwise_majority** (default): Pairwise Majority Rule - candidates are ranked by the number of head-to-head matchups they win. Each candidate's probability is proportional to the number of other candidates they beat in pairwise comparisons (strict majority required).
+
+#### Options
+
+- `--m` (int): Number of candidates (default: 3)
+- `--n` (int): Number of voters (default: 15, or inferred from `--baselines` if provided)
+- `--seed` (int): Random seed for reproducibility (default: 0, used when `--baselines` not provided)
+- `--baselines` (str): Baseline permutation indices in comma-separated or repetition syntax (same format as `honest-reports`)
+- `--T` (int, optional): Number of iterations for strategic reports. If provided, uses strategic reports mode. If not provided, uses single election mode.
+- `--anchor` (float): Anchor parameter (0-1) for strategic reports. Only used when `--T` is provided (default: 0.5)
+- `--distance-metric` (str): Distance metric for strategic reports. Only used when `--T` is provided. Available: `spearman` (default), `kendall_tau`
+- `--mechanism` (str): Aggregation mechanism for converting rankings to probabilities (default: `pairwise_majority`)
+- `--title` (str): Custom title for the plot
+- `--show-integers` (flag): Show candidate integers instead of alphabetical labels in legend
+
 ## Examples
 
 ### Example 1: List All Rankings for 3 Candidates
@@ -250,6 +311,30 @@ uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor 0.5 --distance
 
 This uses Kendall Tau distance instead of Spearman footrule to measure similarity between rankings, which may produce different evolution patterns.
 
+### Example 9: Visualize Single Election Probability Distribution
+
+```bash
+uv run python cli.py proportions --m 3 --n 6 --seed 42 --plot
+```
+
+This generates 6 voters' rankings and displays a proportion plot showing the probability distribution over the 3 candidates using Pairwise Majority Rule.
+
+### Example 10: Visualize Probability Evolution Over Time
+
+```bash
+uv run python cli.py proportions --m 3 --n 6 --T 5 --anchor 0.5 --plot
+```
+
+This simulates strategic voting over 5 iterations and shows how candidate probabilities evolve over time in a stacked area chart.
+
+### Example 11: Probability Evolution with Baselines
+
+```bash
+uv run python cli.py proportions --m 3 --baselines "0*5,3*5,4*5" --T 10 --plot
+```
+
+This creates 15 voters with specific baseline rankings and shows how their probabilities evolve over 10 time steps.
+
 ## Project Structure
 
 ```
@@ -258,16 +343,19 @@ gt-voting/
 ├── cli/                   # CLI modules
 │   ├── rankings_cli.py   # Rankings command
 │   ├── honest_reports_cli.py  # Honest reports command
-│   └── strategic_reports_cli.py  # Strategic reports command
+│   ├── strategic_reports_cli.py  # Strategic reports command
+│   └── proportions_cli.py  # Proportions plot command
 ├── core/                  # Core functionality
 │   ├── rankings_core.py  # Ranking generation
 │   ├── honest_reports.py # Honest reports generation
 │   ├── strategic_reports.py  # Strategic reports generation
+│   ├── aggregator_core.py  # Ranking aggregation (probability distributions)
 │   ├── distance_metrics.py  # Distance metrics (Spearman, Kendall Tau, etc.)
 │   └── utils.py          # Shared utilities
 └── plots/                 # Plotting utilities
     ├── plot_rankings.py   # Rankings visualization
     ├── plot_voter_strategies.py  # Strategy visualization
+    ├── plot_proportions.py  # Proportion plots (stacked area charts)
     └── plot_utils.py      # Shared plotting utilities
 ```
 
