@@ -119,6 +119,9 @@ uv run python cli.py strategic-reports --m 3 --baselines "0*5,3*5,4*5" --T 10 --
 # With different distance metric (default: spearman)
 uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor 0.5 --distance-metric spearman
 
+# Using Kendall Tau distance metric
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor 0.5 --distance-metric kendall_tau
+
 # Output in alphabetical format
 uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor 0.5 --alphabetical
 
@@ -148,8 +151,18 @@ The similarity threshold is calculated as `max_distance = (1 - anchor) * max_pos
 
 The `--distance-metric` parameter selects which distance metric to use for determining similarity between rankings:
 
-- **spearman** (default): Spearman footrule distance - sum of absolute position differences
-- Future metrics may include: `kendall_tau`, `levenshtein`, etc.
+- **spearman** (default): Spearman footrule distance - sum of absolute position differences for each candidate between two rankings
+  - Example: For rankings `(0, 1, 2)` and `(1, 0, 2)`, distance = |0-1| + |1-0| + |2-2| = 2
+  - Maximum distance for m candidates: m²/2 (even m) or (m²-1)/2 (odd m)
+
+- **kendall_tau**: Kendall Tau distance - number of pairwise disagreements (inversions) between two rankings
+  - Counts pairs of candidates that are in different order in the two rankings
+  - Example: For rankings `(0, 1, 2)` and `(1, 0, 2)`, distance = 1 (one inversion: candidates 0 and 1 are swapped)
+  - Maximum distance for m candidates: m*(m-1)/2
+
+Both metrics measure how different two rankings are, but use different approaches:
+- Spearman footrule focuses on position differences
+- Kendall Tau focuses on pairwise order disagreements
 
 #### Options
 
@@ -159,7 +172,7 @@ The `--distance-metric` parameter selects which distance metric to use for deter
 - `--baselines` (str): Baseline permutation indices in comma-separated or repetition syntax (same format as `honest-reports`)
 - `--T` (int, required): Number of iterations (time steps) for strategic evolution
 - `--anchor` (float): Anchor parameter (0-1) controlling how closely reports stay to honest reports (default: 0.5)
-- `--distance-metric` (str): Distance metric to use for similarity calculation (default: "spearman")
+- `--distance-metric` (str): Distance metric to use for similarity calculation. Available: `spearman` (default), `kendall_tau`
 - `--alphabetical` (flag): Output rankings in alphabetical format instead of integer tuples
 - `--plot` (flag): Display a visual heatmap showing voter strategy evolution over T+1 time steps (including initial honest reports)
 
@@ -229,6 +242,14 @@ uv run python cli.py strategic-reports --m 3 --n 10 --T 10 --anchor 0.1 --seed 4
 
 This demonstrates more volatile evolution with a low anchor (0.1), allowing reports to change more freely.
 
+### Example 8: Strategic Reports with Kendall Tau Distance
+
+```bash
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor 0.5 --distance-metric kendall_tau --plot
+```
+
+This uses Kendall Tau distance instead of Spearman footrule to measure similarity between rankings, which may produce different evolution patterns.
+
 ## Project Structure
 
 ```
@@ -242,6 +263,7 @@ gt-voting/
 │   ├── rankings_core.py  # Ranking generation
 │   ├── honest_reports.py # Honest reports generation
 │   ├── strategic_reports.py  # Strategic reports generation
+│   ├── distance_metrics.py  # Distance metrics (Spearman, Kendall Tau, etc.)
 │   └── utils.py          # Shared utilities
 └── plots/                 # Plotting utilities
     ├── plot_rankings.py   # Rankings visualization

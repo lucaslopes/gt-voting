@@ -75,7 +75,7 @@ Examples:
         type=str,
         default="spearman",
         help="Distance metric to use for similarity calculation (default: spearman). "
-             "Available: spearman"
+             "Available: spearman, kendall_tau"
     )
     parser.add_argument(
         "--alphabetical",
