@@ -1,17 +1,10 @@
 import argparse
-import sys
-from pathlib import Path
-
-# Add project root to path for imports
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
-
 from core.rankings_core import generate_rankings
 from plots.plot_rankings import plot_rankings_list
 import matplotlib.pyplot as plt
 
 
-def main():
+def main(args=None):
     parser = argparse.ArgumentParser(
         description="Generate and display all possible candidate rankings",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -65,7 +58,7 @@ Examples:
         help="Layout style for the plot: 'horizontal' (single row), 'vertical' (single column), 'matrix' (grid), or 'auto' (default, chooses based on number of rankings)"
     )
     
-    args = parser.parse_args()
+    args = parser.parse_args(args)
     
     # Validate that m is provided
     if args.m is None:

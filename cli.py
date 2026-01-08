@@ -1,13 +1,130 @@
 """Main CLI entry point for ranking tools."""
 
-import sys
-from pathlib import Path
+import argparse
+from cli.rankings_cli import main as rankings_main
+from cli.honest_reports_cli import main as honest_reports_main
 
-# Add project root to path for imports
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
 
-from cli.rankings_cli import main
+def main():
+    """Unified CLI entry point with subcommands."""
+    parser = argparse.ArgumentParser(
+        description="GT Voting System CLI",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    subparsers = parser.add_subparsers(dest='command', help='Available commands', required=True)
+    
+    # Rankings subcommand
+    rankings_parser = subparsers.add_parser(
+        'rankings',
+        help='Generate and display all possible candidate rankings',
+        description='Generate and display all possible candidate rankings'
+    )
+    rankings_parser.add_argument(
+        "--m",
+        type=int,
+        default=None,
+        help="Number of candidates (required if --candidates not provided)"
+    )
+    rankings_parser.add_argument(
+        "--candidates",
+        type=int,
+        default=None,
+        dest="m",
+        help="Number of candidates (alternative to --m)"
+    )
+    rankings_parser.add_argument(
+        "--alphabetical",
+        action="store_true",
+        help="Output rankings in alphabetical format (default: integer format)"
+    )
+    rankings_parser.add_argument(
+        "--plot",
+        action="store_true",
+        help="Display a visual plot of all rankings (in addition to terminal output)"
+    )
+    rankings_parser.add_argument(
+        "--layout",
+        type=str,
+        choices=['horizontal', 'vertical', 'matrix', 'auto'],
+        default='auto',
+        help="Layout style for the plot: 'horizontal' (single row), 'vertical' (single column), 'matrix' (grid), or 'auto' (default, chooses based on number of rankings)"
+    )
+    
+    # Honest reports subcommand
+    honest_reports_parser = subparsers.add_parser(
+        'honest-reports',
+        help='Generate honest reports from baselines or seed',
+        description='Generate honest reports from baselines or seed'
+    )
+    honest_reports_parser.add_argument(
+        "--n",
+        type=int,
+        default=None,
+        help="Number of voters (default: 15, or inferred from --baselines if provided)"
+    )
+    honest_reports_parser.add_argument(
+        "--m",
+        type=int,
+        default=3,
+        help="Number of candidates (default: 3, required to validate baseline indices)"
+    )
+    honest_reports_parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Random seed for reproducibility (default: 0, used when --baselines not provided)"
+    )
+    honest_reports_parser.add_argument(
+        "--baselines",
+        type=str,
+        default=None,
+        help="Baseline permutation indices. Supports two formats:\n"
+             "  - Old: comma-separated indices (e.g., '0,1,2,0,1,2')\n"
+             "  - New: repetition syntax (e.g., '0*5,3*5,4*5' for 5 voters each)\n"
+             "Indices refer to positions in the sorted list from generate_rankings(m).\n"
+             "If provided, n will be inferred from the total count. If not provided, baselines are sampled uniformly."
+    )
+    honest_reports_parser.add_argument(
+        "--alphabetical",
+        action="store_true",
+        help="Output rankings in alphabetical format (default: integer format)"
+    )
+    honest_reports_parser.add_argument(
+        "--plot",
+        action="store_true",
+        help="Display a visual heatmap of voter strategies (in addition to terminal output)"
+    )
+    
+    args = parser.parse_args()
+    
+    if args.command == 'rankings':
+        # Build argument list for rankings CLI
+        rankings_args = []
+        if args.m is not None:
+            rankings_args.extend(['--m', str(args.m)])
+        if args.alphabetical:
+            rankings_args.append('--alphabetical')
+        if args.plot:
+            rankings_args.append('--plot')
+        if args.layout != 'auto':
+            rankings_args.extend(['--layout', args.layout])
+        rankings_main(rankings_args)
+    elif args.command == 'honest-reports':
+        # Build argument list for honest reports CLI
+        honest_reports_args = []
+        if args.n is not None:
+            honest_reports_args.extend(['--n', str(args.n)])
+        honest_reports_args.extend(['--m', str(args.m)])
+        honest_reports_args.extend(['--seed', str(args.seed)])
+        if args.baselines is not None:
+            honest_reports_args.extend(['--baselines', args.baselines])
+        if args.alphabetical:
+            honest_reports_args.append('--alphabetical')
+        if args.plot:
+            honest_reports_args.append('--plot')
+        honest_reports_main(honest_reports_args)
+
 
 if __name__ == "__main__":
     main()

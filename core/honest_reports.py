@@ -3,6 +3,7 @@
 from math import factorial
 import numpy as np
 from core.rankings_core import generate_rankings, candidate_labels
+from core.utils import spawn_rng
 
 
 def parse_baselines(baselines_str, m, n=None):
@@ -68,11 +69,6 @@ def parse_baselines(baselines_str, m, n=None):
         raise ValueError(f"Invalid baselines format: {e}. "
                         f"Expected comma-separated integers (e.g., '0,1,2,0,1,2') "
                         f"or repetition syntax (e.g., '0*5,3*5,4*5')")
-
-
-def _spawn_rng(seed, rng=None):
-    """Return a numpy Generator; prefer provided rng to keep runs reproducible."""
-    return rng if rng is not None else np.random.default_rng(seed)
 
 
 def baseline_indices_to_rankings(baseline_indices, m):
@@ -147,7 +143,7 @@ def generate_honest_reports(m, n, baselines=None, seed=None, rng=None):
         honest_reports = baseline_indices_to_rankings(baselines, m)
     else:
         # Sample uniformly from all rankings
-        rng = _spawn_rng(seed, rng)
+        rng = spawn_rng(seed, rng)
         sampled_indices = rng.choice(n_perms, size=n)
         honest_reports = [all_rankings[idx] for idx in sampled_indices]
     

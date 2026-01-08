@@ -1,11 +1,4 @@
 import argparse
-import sys
-from pathlib import Path
-
-# Add project root to path for imports
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
-
 from core.honest_reports import generate_honest_reports, parse_baselines, format_rankings_readable
 from core.rankings_core import generate_rankings, candidate_labels
 from plots.plot_voter_strategies import plot_voter_strategies
@@ -13,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def main():
+def main(args=None):
     parser = argparse.ArgumentParser(
         description="Generate honest reports from baselines or seed",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -74,7 +67,7 @@ Examples:
         help="Display a visual heatmap of voter strategies (in addition to terminal output)"
     )
     
-    args = parser.parse_args()
+    args = parser.parse_args(args)
     
     # Validate that m is provided and positive
     if args.m < 1:

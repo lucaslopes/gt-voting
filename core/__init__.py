@@ -7,6 +7,7 @@ from core.honest_reports import (
     baseline_indices_to_rankings,
     format_rankings_readable,
 )
+from core.utils import spawn_rng
 
 __all__ = [
     'candidate_labels',
@@ -15,4 +16,5 @@ __all__ = [
     'generate_honest_reports',
     'baseline_indices_to_rankings',
     'format_rankings_readable',
+    'spawn_rng',
 ]

@@ -3,9 +3,11 @@ import matplotlib.pyplot as plt
 from scipy.optimize import linprog
 from itertools import permutations
 import matplotlib.colors as mcolors
-import string
 import argparse
 from math import factorial
+from core.utils import spawn_rng
+from core.rankings_core import candidate_labels
+from core.honest_reports import parse_baselines
 
 # ==========================================
 # Configuration Constants
@@ -17,30 +19,6 @@ ALPHA_MAX_REFINES = 10  # Maximum number of refinement iterations
 # 1. Core Model (Optimized)
 # ==========================================
 
-def _spawn_rng(seed, rng=None):
-    """Return a numpy Generator; prefer provided rng to keep runs reproducible."""
-    return rng if rng is not None else np.random.default_rng(seed)
-
-
-def _candidate_labels(m):
-    """Return candidate labels A, B, C...; extend with double letters if needed."""
-    letters = list(string.ascii_uppercase)
-    if m <= len(letters):
-        return letters[:m]
-    labels = []
-    labels.extend(letters)
-    remaining = m - len(letters)
-    # extend with double letters (AA, AB, ...) deterministically
-    for first in letters:
-        if remaining <= 0:
-            break
-        for second in letters:
-            labels.append(f"{first}{second}")
-            remaining -= 1
-            if remaining <= 0:
-                break
-    return labels[:m]
-
 
 class IterativeVotingSystem:
     def __init__(self, m, n, alpha, eta, beta, baselines=None, rng=None):
@@ -49,7 +27,7 @@ class IterativeVotingSystem:
         self.alpha = alpha
         self.eta = eta
         self.beta = beta
-        self.rng = _spawn_rng(None, rng)
+        self.rng = spawn_rng(None, rng)
         
         # Complete graph or a "clique" (all voters are connected to all others)
         self.adj = np.ones((n, n)) - np.eye(n)
@@ -267,7 +245,7 @@ def adaptive_alpha_grid(n, m, eta, beta, rng, baselines):
 
 def run_phase_transition(n=15, m=3, alpha_grid=None, eta=0.2, beta=3.0, seed=0, rng=None, baselines=None):
     print("Running Phase Transition Experiment...")
-    rng = _spawn_rng(seed, rng)
+    rng = spawn_rng(seed, rng)
     
     if alpha_grid is not None:
         # Use provided alpha grid
@@ -358,7 +336,7 @@ def run_ternary_scenario(alpha, T=300, n=15, m=3, eta=0.1, beta=3.0, seed=0, rng
     """
     if m != 3:
         raise ValueError("Ternary scenario requires m == 3")
-    rng = _spawn_rng(seed, rng)
+    rng = spawn_rng(seed, rng)
     sys = IterativeVotingSystem(m=m, n=n, alpha=alpha, eta=eta, beta=beta, rng=rng, baselines=baselines)
     traj = []
     
@@ -389,7 +367,7 @@ def run_phase_transition_ternary(alpha, n=15, m=3, eta=0.2, beta=3.0, seed=0, rn
     """
     if m != 3:
         raise ValueError("Ternary scenario requires m == 3")
-    rng = _spawn_rng(seed, rng)
+    rng = spawn_rng(seed, rng)
     sys = IterativeVotingSystem(m=m, n=n, alpha=alpha, eta=eta, beta=beta, rng=rng, baselines=baselines)
     traj = []
     
@@ -401,7 +379,7 @@ def run_phase_transition_ternary(alpha, n=15, m=3, eta=0.2, beta=3.0, seed=0, rn
 
 def run_heatmap_scenario(n=15, m=3, alpha=0.10, eta=0.1, beta=3.0, T=150, seed=0, rng=None, baselines=None):
     print(f"Running Heatmap Scenario (Alpha={alpha})...")
-    rng = _spawn_rng(seed, rng)
+    rng = spawn_rng(seed, rng)
     sys = IterativeVotingSystem(m=m, n=n, alpha=alpha, eta=eta, beta=beta, rng=rng, baselines=baselines)
     traj = []
     
@@ -421,7 +399,7 @@ def run_full_scenario_for_alpha(alpha, n=15, m=3, eta=0.2, beta=3.0, T=300, seed
     This helper is used to ensure that the heatmap and ternary plots
     can be driven from the exact same run.
     """
-    rng = _spawn_rng(seed, rng)
+    rng = spawn_rng(seed, rng)
     sys = IterativeVotingSystem(m=m, n=n, alpha=alpha, eta=eta, beta=beta, rng=rng, baselines=baselines)
     traj = []
     
@@ -505,7 +483,7 @@ def plot_results(data=None, n=15, m=3, seed=0):
     perms = data["heatmap"]["perms"]
     traj = data["heatmap"]["traj"]
     ternary = data.get("ternary")
-    labels = _candidate_labels(m)
+    labels = candidate_labels(m)
     
     # A. Phase Transition Plot
     ax_phase = fig.add_subplot(gs[0, 0])
@@ -763,68 +741,6 @@ def main(n=15, m=3, seed=0, baselines=None, plot=True):
         plot_results(data=results, n=n, m=m, seed=seed)
     
     return results
-
-
-def parse_baselines(baselines_str, m, n=None):
-    """
-    Parse baseline string supporting both old and new syntax.
-    
-    Old syntax: "0,1,2,0,1,2" (comma-separated permutation indices)
-    New syntax: "0*5,3*5,4*5" (permutation_index*count, expands to repeated indices)
-    
-    Args:
-        baselines_str: Baseline string in either format
-        m: Number of candidates (to validate permutation index range)
-        n: Optional expected number of voters (if None, will be inferred from baselines)
-    
-    Returns:
-        Tuple (baselines_list, inferred_n) where:
-        - baselines_list: List of permutation indices (length inferred_n)
-        - inferred_n: Number of voters inferred from baselines
-    """
-    if baselines_str is None or baselines_str.strip() == "":
-        return None, n
-    
-    try:
-        baselines = []
-        parts = [p.strip() for p in baselines_str.split(",")]
-        
-        for part in parts:
-            if "*" in part:
-                # New syntax: "index*count"
-                if part.count("*") != 1:
-                    raise ValueError(f"Invalid repetition syntax in '{part}'. Expected format: 'index*count'")
-                
-                idx_str, count_str = part.split("*")
-                idx = int(idx_str.strip())
-                count = int(count_str.strip())
-                
-                if count < 1:
-                    raise ValueError(f"Repetition count must be >= 1, got {count} in '{part}'")
-                
-                baselines.extend([idx] * count)
-            else:
-                # Old syntax: single index
-                baselines.append(int(part))
-        
-        inferred_n = len(baselines)
-        
-        # If n was provided, validate it matches
-        if n is not None and inferred_n != n:
-            raise ValueError(f"Expected {n} baseline indices (one per voter), got {inferred_n} from baselines string")
-        
-        # Validate that indices are within valid range
-        n_perms = factorial(m)
-        for i, idx in enumerate(baselines):
-            if idx < 0 or idx >= n_perms:
-                raise ValueError(f"Baseline index {idx} for voter {i} is out of range. "
-                               f"Valid range: 0 to {n_perms-1} (for m={m} candidates, there are {n_perms} permutations)")
-        
-        return baselines, inferred_n
-    except ValueError as e:
-        raise ValueError(f"Invalid baselines format: {e}. "
-                        f"Expected comma-separated integers (e.g., '0,1,2,0,1,2') "
-                        f"or repetition syntax (e.g., '0*5,3*5,4*5')")
 
 
 if __name__ == "__main__":
