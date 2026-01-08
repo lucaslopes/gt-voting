@@ -1,6 +1,6 @@
 # GT Voting System
 
-A Python toolkit for generating and analyzing candidate rankings in voting systems, with support for honest reports generation and visualization.
+A Python toolkit for generating and analyzing candidate rankings in voting systems, with support for honest reports generation, strategic voting simulation, and visualization.
 
 ## Installation
 
@@ -12,7 +12,7 @@ uv pip install -e '.[dev]'
 
 ## CLI Usage
 
-The project provides a unified CLI interface through `cli.py` with two main subcommands: `rankings` and `honest-reports`.
+The project provides a unified CLI interface through `cli.py` with three main subcommands: `rankings`, `honest-reports`, and `strategic-reports`.
 
 ### Basic Usage
 
@@ -23,6 +23,7 @@ uv run python cli.py <command> [options]
 # Or using the individual CLI modules directly
 uv run python -m cli.rankings_cli [options]
 uv run python -m cli.honest_reports_cli [options]
+uv run python -m cli.strategic_reports_cli [options]
 ```
 
 ### Command: `rankings`
@@ -102,6 +103,66 @@ Baseline indices refer to positions in the sorted list of all possible rankings 
 - `--alphabetical` (flag): Output rankings in alphabetical format instead of integer tuples
 - `--plot` (flag): Display a visual heatmap of voter strategies
 
+### Command: `strategic-reports`
+
+Generate strategic reports that evolve over T iterations, simulating how voters' reports change over time based on an anchor parameter.
+
+#### Basic Examples
+
+```bash
+# Basic usage with T=5 iterations and anchor=0.5
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor 0.5
+
+# Using baseline string with T=10 iterations
+uv run python cli.py strategic-reports --m 3 --baselines "0*5,3*5,4*5" --T 10 --anchor 0.7
+
+# With different distance metric (default: spearman)
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor 0.5 --distance-metric spearman
+
+# Output in alphabetical format
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor 0.5 --alphabetical
+
+# Display trajectory visualization over T iterations
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor 0.5 --plot
+
+# High anchor (reports stay close to honest reports)
+uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --anchor 0.9 --plot
+
+# Low anchor (reports can change more freely)
+uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --anchor 0.1 --plot
+```
+
+#### Anchor Parameter
+
+The `--anchor` parameter (0-1) controls how closely reports stay to their original honest reports:
+
+- **anchor=1.0**: Reports never change (stay at honest reports throughout all iterations)
+- **anchor=0.0**: Reports can change completely randomly (any ranking is allowed)
+- **Intermediate values**: Reports can change, but only to rankings that are "close enough" based on the distance metric
+  - Higher anchor (e.g., 0.9): Reports stay very close to honest reports
+  - Lower anchor (e.g., 0.1): Reports can change more freely
+
+The similarity threshold is calculated as `max_distance = (1 - anchor) * max_possible_distance`, where `max_possible_distance` depends on the chosen distance metric.
+
+#### Distance Metrics
+
+The `--distance-metric` parameter selects which distance metric to use for determining similarity between rankings:
+
+- **spearman** (default): Spearman footrule distance - sum of absolute position differences
+- Future metrics may include: `kendall_tau`, `levenshtein`, etc.
+
+#### Options
+
+- `--n` (int): Number of voters (default: 15, or inferred from `--baselines` if provided)
+- `--m` (int): Number of candidates (default: 3, required to validate baseline indices)
+- `--seed` (int): Random seed for reproducibility (default: 0, used when `--baselines` not provided)
+- `--baselines` (str): Baseline permutation indices in comma-separated or repetition syntax (same format as `honest-reports`)
+- `--T` (int, required): Number of iterations (time steps) for strategic evolution
+- `--anchor` (float): Anchor parameter (0-1) controlling how closely reports stay to honest reports (default: 0.5)
+- `--distance-metric` (str): Distance metric to use for similarity calculation (default: "spearman")
+- `--alphabetical` (flag): Output rankings in alphabetical format instead of integer tuples
+- `--plot` (flag): Display a visual heatmap showing voter strategy evolution over T+1 time steps (including initial honest reports)
+
 ## Examples
 
 ### Example 1: List All Rankings for 3 Candidates
@@ -144,6 +205,30 @@ uv run python cli.py honest-reports --n 10 --m 3 --seed 42 --plot
 
 This generates 10 random honest reports and displays them as a heatmap.
 
+### Example 5: Simulate Strategic Voting Evolution
+
+```bash
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor 0.7 --plot
+```
+
+This simulates how 6 voters' reports evolve over 5 iterations with anchor=0.7, showing the trajectory in a heatmap where each column represents a time step.
+
+### Example 6: Strategic Reports with High Anchor (Stable)
+
+```bash
+uv run python cli.py strategic-reports --m 3 --baselines "0*5,1*5,2*5" --T 10 --anchor 0.95 --plot
+```
+
+This shows how reports evolve with a high anchor (0.95), meaning reports stay very close to their honest reports throughout the iterations.
+
+### Example 7: Strategic Reports with Low Anchor (Volatile)
+
+```bash
+uv run python cli.py strategic-reports --m 3 --n 10 --T 10 --anchor 0.1 --seed 42 --plot
+```
+
+This demonstrates more volatile evolution with a low anchor (0.1), allowing reports to change more freely.
+
 ## Project Structure
 
 ```
@@ -151,10 +236,12 @@ gt-voting/
 ├── cli.py                 # Unified CLI entry point
 ├── cli/                   # CLI modules
 │   ├── rankings_cli.py   # Rankings command
-│   └── honest_reports_cli.py  # Honest reports command
+│   ├── honest_reports_cli.py  # Honest reports command
+│   └── strategic_reports_cli.py  # Strategic reports command
 ├── core/                  # Core functionality
 │   ├── rankings_core.py  # Ranking generation
 │   ├── honest_reports.py # Honest reports generation
+│   ├── strategic_reports.py  # Strategic reports generation
 │   └── utils.py          # Shared utilities
 └── plots/                 # Plotting utilities
     ├── plot_rankings.py   # Rankings visualization

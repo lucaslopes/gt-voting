@@ -3,6 +3,7 @@
 import argparse
 from cli.rankings_cli import main as rankings_main
 from cli.honest_reports_cli import main as honest_reports_main
+from cli.strategic_reports_cli import main as strategic_reports_main
 
 
 def main():
@@ -96,6 +97,71 @@ def main():
         help="Display a visual heatmap of voter strategies (in addition to terminal output)"
     )
     
+    # Strategic reports subcommand
+    strategic_reports_parser = subparsers.add_parser(
+        'strategic-reports',
+        help='Generate strategic reports that evolve over T iterations',
+        description='Generate strategic reports that evolve over T iterations'
+    )
+    strategic_reports_parser.add_argument(
+        "--n",
+        type=int,
+        default=None,
+        help="Number of voters (default: 15, or inferred from --baselines if provided)"
+    )
+    strategic_reports_parser.add_argument(
+        "--m",
+        type=int,
+        default=3,
+        help="Number of candidates (default: 3, required to validate baseline indices)"
+    )
+    strategic_reports_parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Random seed for reproducibility (default: 0, used when --baselines not provided)"
+    )
+    strategic_reports_parser.add_argument(
+        "--baselines",
+        type=str,
+        default=None,
+        help="Baseline permutation indices. Supports two formats:\n"
+             "  - Old: comma-separated indices (e.g., '0,1,2,0,1,2')\n"
+             "  - New: repetition syntax (e.g., '0*5,3*5,4*5' for 5 voters each)\n"
+             "Indices refer to positions in the sorted list from generate_rankings(m).\n"
+             "If provided, n will be inferred from the total count. If not provided, baselines are sampled uniformly."
+    )
+    strategic_reports_parser.add_argument(
+        "--T",
+        type=int,
+        required=True,
+        help="Number of iterations (time steps) for strategic evolution"
+    )
+    strategic_reports_parser.add_argument(
+        "--anchor",
+        type=float,
+        default=0.5,
+        help="Anchor parameter (0-1) controlling how closely reports stay to honest reports. "
+             "1.0 = reports never change, 0.0 = reports can change completely randomly (default: 0.5)"
+    )
+    strategic_reports_parser.add_argument(
+        "--distance-metric",
+        type=str,
+        default="spearman",
+        help="Distance metric to use for similarity calculation (default: spearman). "
+             "Available: spearman"
+    )
+    strategic_reports_parser.add_argument(
+        "--alphabetical",
+        action="store_true",
+        help="Output rankings in alphabetical format (default: integer format)"
+    )
+    strategic_reports_parser.add_argument(
+        "--plot",
+        action="store_true",
+        help="Display a visual heatmap of voter strategy evolution over T iterations"
+    )
+    
     args = parser.parse_args()
     
     if args.command == 'rankings':
@@ -124,6 +190,23 @@ def main():
         if args.plot:
             honest_reports_args.append('--plot')
         honest_reports_main(honest_reports_args)
+    elif args.command == 'strategic-reports':
+        # Build argument list for strategic reports CLI
+        strategic_reports_args = []
+        if args.n is not None:
+            strategic_reports_args.extend(['--n', str(args.n)])
+        strategic_reports_args.extend(['--m', str(args.m)])
+        strategic_reports_args.extend(['--seed', str(args.seed)])
+        if args.baselines is not None:
+            strategic_reports_args.extend(['--baselines', args.baselines])
+        strategic_reports_args.extend(['--T', str(args.T)])
+        strategic_reports_args.extend(['--anchor', str(args.anchor)])
+        strategic_reports_args.extend(['--distance-metric', args.distance_metric])
+        if args.alphabetical:
+            strategic_reports_args.append('--alphabetical')
+        if args.plot:
+            strategic_reports_args.append('--plot')
+        strategic_reports_main(strategic_reports_args)
 
 
 if __name__ == "__main__":
