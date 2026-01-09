@@ -1,53 +1,52 @@
 """Core functionality for generating strategic reports that evolve over time."""
 
-import numpy as np
-from core.rankings_core import generate_rankings
-from core.utils import spawn_rng
-from core.distance_metrics import get_distance_function, get_max_distance
+from strategies import get_strategy_instance, list_strategies
 
 
-def find_similar_rankings(current_ranking, all_rankings, max_distance, distance_func):
-    """
-    Find rankings within max_distance of current_ranking.
-    
-    Args:
-        current_ranking: The ranking to compare against (tuple)
-        all_rankings: List of all possible rankings (list of tuples)
-        max_distance: Maximum allowed distance (integer, or float('inf'))
-        distance_func: Distance function that takes two rankings and returns distance
-    
-    Returns:
-        List of ranking indices (positions in all_rankings) that are within max_distance
-    """
-    similar_indices = []
-    
-    for idx, ranking in enumerate(all_rankings):
-        distance = distance_func(current_ranking, ranking)
-        if distance <= max_distance:
-            similar_indices.append(idx)
-    
-    return similar_indices
-
-
-def generate_strategic_reports(honest_reports, T, anchor, m, seed=None, rng=None, distance_metric="spearman"):
+def generate_strategic_reports(
+    honest_reports, 
+    T, 
+    m, 
+    seed=None, 
+    rng=None,
+    strategy="gt_strategy",
+    # GTStrategy parameters
+    anchor_strength=0.1,
+    learning_rate=0.2,
+    sharpness=3.0,
+    # SimilarityStrategy parameters (for backward compatibility)
+    distance_metric="spearman",
+    # Graph topology
+    graph=None
+):
     """
     Generate strategic reports that evolve over T iterations.
     
-    Reports start from honest_reports and evolve based on the anchor parameter.
-    The anchor parameter (0-1) controls how closely reports stay to their original
-    honest reports, with anchor=1 meaning no change and anchor=0 allowing
-    completely random changes.
+    Reports start from honest_reports and evolve based on the selected strategy.
+    By default, uses GTStrategy which implements iterative game theory dynamics.
     
     Args:
         honest_reports: List of ranking tuples (baseline honest reports), one per voter
         T: Number of iterations (time steps)
-        anchor: Float in [0, 1] controlling how much reports stay close to honest reports
-                1.0 = reports never change (stay at honest reports)
-                0.0 = reports can change completely randomly
         m: Number of candidates
         seed: Random seed for reproducibility (used if rng is None)
         rng: Optional numpy Generator (if None, creates new one from seed)
-        distance_metric: Name of distance metric to use (default: "spearman")
+        strategy: Strategy name to use (default: "gt_strategy")
+                  Available: "gt_strategy", "similarity_strategy"
+        
+        anchor_strength: Anchoring parameter (0-1), controls how much voters stick to baseline.
+                For GTStrategy: Used directly as "anchor_strength" parameter (default: 0.1).
+                For SimilarityStrategy: Controls how closely reports stay to honest reports.
+                1.0 = reports never change, 0.0 = reports can change completely randomly (default: 0.5)
+        learning_rate: Learning rate (0-1) for GTStrategy, controls update speed (default: 0.2)
+        sharpness: Sharpness parameter (>0) for GTStrategy, controls exploration vs exploitation.
+                  Higher sharpness = more exploitation (sharper distribution, more focused)
+                  Lower sharpness = more exploration (flatter distribution, more random) (default: 3.0)
+        distance_metric: Name of distance metric for SimilarityStrategy (default: "spearman")
+                         Available: "spearman", "kendall_tau"
+        graph: Optional igraph.Graph object defining social network topology.
+               If None (default), uses complete graph (deg = n-1 for all voters).
+               Only used by GTStrategy.
     
     Returns:
         numpy array of shape [n, T+1] where:
@@ -55,72 +54,41 @@ def generate_strategic_reports(honest_reports, T, anchor, m, seed=None, rng=None
         - Column 0 contains honest reports (initial state)
         - Columns 1..T contain evolved reports at each iteration
         - Each cell contains a ranking index (position in all_rankings)
+    
+    Raises:
+        ValueError: If strategy name is unknown or parameters are invalid
     """
-    # Get distance function
-    distance_func = get_distance_function(distance_metric)
+    available_strategies = list_strategies()
+    if strategy not in available_strategies:
+        raise ValueError(
+            f"Unknown strategy: {strategy}. Available: {available_strategies}"
+        )
     
-    # Get all possible rankings
-    all_rankings = generate_rankings(m, alphabetical=False)
-    n_rankings = len(all_rankings)
-    
-    # Create mapping from ranking tuple to index
-    ranking_to_index = {ranking: idx for idx, ranking in enumerate(all_rankings)}
-    
-    # Calculate maximum possible distance for this metric
-    max_possible_distance = get_max_distance(m, distance_metric)
-    
-    # Initialize RNG
-    rng = spawn_rng(seed, rng)
-    
-    # Number of voters
-    n = len(honest_reports)
-    
-    # Initialize reports array: [n, T+1]
-    # Column 0 will be honest reports, columns 1..T will be evolved reports
-    reports = np.zeros((n, T + 1), dtype=int)
-    
-    # Convert honest reports to indices and store in column 0
-    for i, ranking in enumerate(honest_reports):
-        reports[i, 0] = ranking_to_index[ranking]
-    
-    # Evolve reports over T iterations
-    for t in range(1, T + 1):
-        for i in range(n):
-            # With probability = anchor: keep same report (copy from t-1)
-            # With probability = 1 - anchor: change report
-            if rng.random() < anchor:
-                # Keep same report
-                reports[i, t] = reports[i, t - 1]
-            else:
-                # Change report
-                current_ranking_idx = reports[i, t - 1]
-                current_ranking = all_rankings[current_ranking_idx]
-                
-                # Calculate max_distance based on anchor
-                # anchor=1: max_distance=0 (only identical rankings)
-                # anchor=0: max_distance=infinity (all rankings)
-                # For intermediate values: max_distance = (1 - anchor) * max_possible_distance
-                if anchor >= 1.0:
-                    max_distance = 0
-                elif anchor <= 0.0:
-                    max_distance = float('inf')
-                else:
-                    max_distance = (1 - anchor) * max_possible_distance
-                
-                # Find similar rankings within max_distance
-                similar_indices = find_similar_rankings(
-                    current_ranking,
-                    all_rankings,
-                    max_distance,
-                    distance_func
-                )
-                
-                # If no similar rankings found (shouldn't happen, but handle edge case)
-                if not similar_indices:
-                    # Fall back to current ranking
-                    reports[i, t] = current_ranking_idx
-                else:
-                    # Randomly sample one from similar rankings
-                    reports[i, t] = rng.choice(similar_indices)
-    
-    return reports
+    # Get strategy instance with appropriate parameters
+    if strategy == "gt_strategy":
+        # Pass parameters directly to GTStrategy
+        strategy_instance = get_strategy_instance(
+            strategy, 
+            anchor_strength=anchor_strength, 
+            learning_rate=learning_rate, 
+            sharpness=sharpness
+        )
+        # GTStrategy doesn't use distance_metric in generate_reports
+        return strategy_instance.generate_reports(
+            honest_reports, T, m, seed=seed, rng=rng, graph=graph
+        )
+    elif strategy == "similarity_strategy":
+        strategy_instance = get_strategy_instance(
+            strategy, 
+            distance_metric=distance_metric
+        )
+        # SimilarityStrategy uses anchor_strength in generate_reports
+        return strategy_instance.generate_reports(
+            honest_reports, T, m, seed=seed, rng=rng, anchor_strength=anchor_strength
+        )
+    else:
+        # For any future strategies, try with minimal parameters
+        strategy_instance = get_strategy_instance(strategy)
+        return strategy_instance.generate_reports(
+            honest_reports, T, m, seed=seed, rng=rng
+        )

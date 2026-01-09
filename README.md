@@ -106,64 +106,80 @@ Baseline indices refer to positions in the sorted list of all possible rankings 
 
 ### Command: `strategic-reports`
 
-Generate strategic reports that evolve over T iterations, simulating how voters' reports change over time based on an anchor parameter.
+Generate strategic reports that evolve over T iterations, simulating how voters' reports change over time. Supports multiple strategies including GTStrategy (default, game theory dynamics) and SimilarityStrategy (similarity-based evolution).
 
 #### Basic Examples
 
 ```bash
-# Basic usage with T=5 iterations and anchor=0.5
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor 0.5
+# Basic usage with GTStrategy (default) - T=5 iterations
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5
 
-# Using baseline string with T=10 iterations
-uv run python cli.py strategic-reports --m 3 --baselines "0*5,3*5,4*5" --T 10 --anchor 0.7
+# GTStrategy with custom parameters
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor-strength 0.2 --learning-rate 0.3 --sharpness 5.0
 
-# With different distance metric (default: spearman)
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor 0.5 --distance-metric spearman
+# Using SimilarityStrategy (backward compatibility)
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --strategy similarity_strategy --anchor-strength 0.5
 
-# Using Kendall Tau distance metric
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor 0.5 --distance-metric kendall_tau
+# Using baseline string with GTStrategy
+uv run python cli.py strategic-reports --m 3 --baselines "0*5,3*5,4*5" --T 10
 
 # Output in alphabetical format
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor 0.5 --alphabetical
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --alphabetical
 
 # Display trajectory visualization over T iterations
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor 0.5 --plot
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --plot
 
-# High anchor (reports stay close to honest reports)
-uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --anchor 0.9 --plot
+# GTStrategy with high anchor strength (strong anchoring to baseline)
+uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --anchor-strength 0.9 --plot
 
-# Low anchor (reports can change more freely)
-uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --anchor 0.1 --plot
+# GTStrategy with low anchor strength (more strategic adaptation)
+uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --anchor-strength 0.1 --plot
 ```
 
-#### Anchor Parameter
+#### Strategies
 
-The `--anchor` parameter (0-1) controls how closely reports stay to their original honest reports:
+The `--strategy` parameter selects which strategy to use for evolving reports:
 
-- **anchor=1.0**: Reports never change (stay at honest reports throughout all iterations)
-- **anchor=0.0**: Reports can change completely randomly (any ranking is allowed)
-- **Intermediate values**: Reports can change, but only to rankings that are "close enough" based on the distance metric
-  - Higher anchor (e.g., 0.9): Reports stay very close to honest reports
-  - Lower anchor (e.g., 0.1): Reports can change more freely
+##### GTStrategy (default: `gt_strategy`)
+
+Implements iterative game theory dynamics where voters strategically update their reported rankings based on the aggregated outcome. Uses logit response dynamics with anchoring.
+
+**Parameters:**
+- `--anchor-strength` (float, 0-1, default: 0.1): Anchoring strength controlling how much voters stick to their baseline (honest) reports. Accepts `--alpha` as alias.
+  - Higher anchor strength (e.g., 0.9): Stiff "spring" to the honest baseline (reports stay close to honest rankings)
+  - Lower anchor  strength (e.g., 0.1): Loose spring (reports can move more freely in response to outcomes)
+- `--learning-rate` (float, 0-1, default: 0.2): Learning rate controlling update speed. Accepts `--eta` as alias.
+  - Higher learning rate: Faster adaptation to new outcomes
+  - Lower learning rate: Slower, more gradual changes
+- `--sharpness` (float, >0, default: 3.0): Sharpness parameter controlling exploration vs exploitation. Accepts `--beta` as alias.
+  - Higher sharpness: More exploitation (sharper best-response distribution, more focused on high-scoring rankings)
+  - Lower sharpness: More exploration (flatter distribution, more random exploration)
+
+**How it works:**
+1. At each time step, aggregates current reported rankings using GT mechanism to get outcome probabilities
+2. Computes scores for each possible ranking based on the outcome
+3. Updates each voter's probability distribution over rankings using logit response
+4. Balances strategic adaptation (based on outcomes) with anchoring to baseline reports
+
+##### SimilarityStrategy (`similarity_strategy`)
+
+Evolves reports based on similarity to honest reports, controlled by an anchor strength parameter and distance metric.
+
+**Parameters:**
+- `--anchor-strength` (float, 0-1, default: 0.5): Controls how closely reports stay to honest reports
+  - **anchor=1.0**: Reports never change (stay at honest reports throughout all iterations)
+  - **anchor=0.0**: Reports can change completely randomly (any ranking is allowed)
+  - **Intermediate values**: Reports can change, but only to rankings that are "close enough" based on the distance metric
+- `--distance-metric` (str, default: "spearman"): Distance metric for determining similarity
+  - **spearman**: Spearman footrule distance - sum of absolute position differences for each candidate between two rankings
+    - Example: For rankings `(0, 1, 2)` and `(1, 0, 2)`, distance = |0-1| + |1-0| + |2-2| = 2
+    - Maximum distance for m candidates: m²/2 (even m) or (m²-1)/2 (odd m)
+  - **kendall_tau**: Kendall Tau distance - number of pairwise disagreements (inversions) between two rankings
+    - Counts pairs of candidates that are in different order in the two rankings
+    - Example: For rankings `(0, 1, 2)` and `(1, 0, 2)`, distance = 1 (one inversion: candidates 0 and 1 are swapped)
+    - Maximum distance for m candidates: m*(m-1)/2
 
 The similarity threshold is calculated as `max_distance = (1 - anchor) * max_possible_distance`, where `max_possible_distance` depends on the chosen distance metric.
-
-#### Distance Metrics
-
-The `--distance-metric` parameter selects which distance metric to use for determining similarity between rankings:
-
-- **spearman** (default): Spearman footrule distance - sum of absolute position differences for each candidate between two rankings
-  - Example: For rankings `(0, 1, 2)` and `(1, 0, 2)`, distance = |0-1| + |1-0| + |2-2| = 2
-  - Maximum distance for m candidates: m²/2 (even m) or (m²-1)/2 (odd m)
-
-- **kendall_tau**: Kendall Tau distance - number of pairwise disagreements (inversions) between two rankings
-  - Counts pairs of candidates that are in different order in the two rankings
-  - Example: For rankings `(0, 1, 2)` and `(1, 0, 2)`, distance = 1 (one inversion: candidates 0 and 1 are swapped)
-  - Maximum distance for m candidates: m*(m-1)/2
-
-Both metrics measure how different two rankings are, but use different approaches:
-- Spearman footrule focuses on position differences
-- Kendall Tau focuses on pairwise order disagreements
 
 #### Options
 
@@ -172,8 +188,11 @@ Both metrics measure how different two rankings are, but use different approache
 - `--seed` (int): Random seed for reproducibility (default: 0, used when `--baselines` not provided)
 - `--baselines` (str): Baseline permutation indices in comma-separated or repetition syntax (same format as `honest-reports`)
 - `--T` (int, required): Number of iterations (time steps) for strategic evolution
-- `--anchor` (float): Anchor parameter (0-1) controlling how closely reports stay to honest reports (default: 0.5)
-- `--distance-metric` (str): Distance metric to use for similarity calculation. Available: `spearman` (default), `kendall_tau`
+- `--strategy` (str): Strategy to use. Available: `gt_strategy` (default), `similarity_strategy`
+- `--anchor` (float): Anchoring strength (0-1). Controls how much voters stick to baseline. Accepts `--alpha` as alias. Default: 0.1 for GTStrategy, 0.5 for SimilarityStrategy
+- `--learning-rate` (float): Learning rate for GTStrategy (0-1, default: 0.2). Accepts `--eta` as alias. Only used when `--strategy=gt_strategy`
+- `--sharpness` (float): Sharpness parameter for GTStrategy (>0, default: 3.0). Accepts `--beta` as alias. Only used when `--strategy=gt_strategy`
+- `--distance-metric` (str): Distance metric for SimilarityStrategy. Available: `spearman` (default), `kendall_tau`. Only used when `--strategy=similarity_strategy`
 - `--alphabetical` (flag): Output rankings in alphabetical format instead of integer tuples
 - `--plot` (flag): Display a visual heatmap showing voter strategy evolution over T+1 time steps (including initial honest reports)
 
@@ -187,20 +206,26 @@ Visualize probability distributions as proportion plots (stacked area charts). T
 # Single election - visualize probability distribution for one set of rankings
 uv run python cli.py proportions --m 3 --n 6 --seed 42
 
-# Strategic reports over T iterations - see how probabilities evolve over time
-uv run python cli.py proportions --m 3 --n 6 --T 5 --anchor 0.5
+# Strategic reports over T iterations with GTStrategy (default) - see how probabilities evolve over time
+uv run python cli.py proportions --m 3 --n 6 --T 5
+
+# GTStrategy with custom parameters
+uv run python cli.py proportions --m 3 --n 6 --T 5 --anchor-strength 0.2 --learning-rate 0.3 --sharpness 5.0
+
+# Using SimilarityStrategy
+uv run python cli.py proportions --m 3 --n 6 --T 5 --strategy similarity_strategy --anchor-strength 0.5
 
 # With baselines - use specific baseline rankings
 uv run python cli.py proportions --m 3 --baselines "0*5,3*5,4*5" --T 10
 
 # Custom aggregation mechanism (pairwise majority)
-uv run python cli.py proportions --m 3 --n 6 --T 5 --anchor 0.5 --mechanism pairwise_majority
+uv run python cli.py proportions --m 3 --n 6 --T 5 --mechanism pairwise_majority
 
 # Using plurality mechanism
-uv run python cli.py proportions --m 3 --n 6 --T 5 --anchor 0.5 --mechanism plurality
+uv run python cli.py proportions --m 3 --n 6 --T 5 --mechanism plurality
 
 # Custom title for the plot
-uv run python cli.py proportions --m 3 --n 6 --T 5 --anchor 0.5 --title "Election Evolution"
+uv run python cli.py proportions --m 3 --n 6 --T 5 --title "Election Evolution"
 
 # Show integer labels instead of alphabetical
 uv run python cli.py proportions --m 3 --n 6 --seed 42 --show-integers
@@ -249,8 +274,11 @@ The `--mechanism` parameter selects how to aggregate rankings into probabilities
 - `--seed` (int): Random seed for reproducibility (default: 0, used when `--baselines` not provided)
 - `--baselines` (str): Baseline permutation indices in comma-separated or repetition syntax (same format as `honest-reports`)
 - `--T` (int, optional): Number of iterations for strategic reports. If provided, uses strategic reports mode. If not provided, uses single election mode.
-- `--anchor` (float): Anchor parameter (0-1) for strategic reports. Only used when `--T` is provided (default: 0.5)
-- `--distance-metric` (str): Distance metric for strategic reports. Only used when `--T` is provided. Available: `spearman` (default), `kendall_tau`
+- `--strategy` (str): Strategy to use for evolving reports. Only used when `--T` is provided. Available: `gt_strategy` (default), `similarity_strategy`
+- `--anchor` (float): Anchoring strength (0-1). Controls how much voters stick to baseline. Accepts `--alpha` as alias. Only used when `--T` is provided. Default: 0.1 for GTStrategy, 0.5 for SimilarityStrategy
+- `--learning-rate` (float): Learning rate for GTStrategy (0-1, default: 0.2). Accepts `--eta` as alias. Only used when `--T` is provided and `--strategy=gt_strategy`
+- `--sharpness` (float): Sharpness parameter for GTStrategy (>0, default: 3.0). Accepts `--beta` as alias. Only used when `--T` is provided and `--strategy=gt_strategy`
+- `--distance-metric` (str): Distance metric for SimilarityStrategy. Only used when `--T` is provided and `--strategy=similarity_strategy`. Available: `spearman` (default), `kendall_tau`
 - `--mechanism` (str): Aggregation mechanism for converting rankings to probabilities (default: `pairwise_majority`). Available: `GT`, `pairwise_majority`, `plurality`
 - `--title` (str): Custom title for the plot
 - `--show-integers` (flag): Show candidate integers instead of alphabetical labels in legend
@@ -297,37 +325,45 @@ uv run python cli.py honest-reports --n 10 --m 3 --seed 42 --plot
 
 This generates 10 random honest reports and displays them as a heatmap.
 
-### Example 5: Simulate Strategic Voting Evolution
+### Example 5: Simulate Strategic Voting Evolution with GTStrategy
 
 ```bash
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor 0.7 --plot
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --plot
 ```
 
-This simulates how 6 voters' reports evolve over 5 iterations with anchor=0.7, showing the trajectory in a heatmap where each column represents a time step.
+This simulates how 6 voters' reports evolve over 5 iterations using GTStrategy (default), showing the trajectory in a heatmap where each column represents a time step.
 
-### Example 6: Strategic Reports with High Anchor (Stable)
+### Example 6: GTStrategy with Custom Parameters
 
 ```bash
-uv run python cli.py strategic-reports --m 3 --baselines "0*5,1*5,2*5" --T 10 --anchor 0.95 --plot
+uv run python cli.py strategic-reports --m 3 --baselines "0*5,1*5,2*5" --T 10 --anchor-strength 0.2 --learning-rate 0.3 --sharpness 5.0 --plot
 ```
 
-This shows how reports evolve with a high anchor (0.95), meaning reports stay very close to their honest reports throughout the iterations.
+This shows how reports evolve with GTStrategy using custom parameters: anchor=0.2 (moderate anchoring), learning-rate=0.3 (faster learning), sharpness=5.0 (more exploitation, sharper best responses).
 
-### Example 7: Strategic Reports with Low Anchor (Volatile)
+### Example 7: GTStrategy with High Anchor strength (Strong Anchoring)
 
 ```bash
-uv run python cli.py strategic-reports --m 3 --n 10 --T 10 --anchor 0.1 --seed 42 --plot
+uv run python cli.py strategic-reports --m 3 --n 10 --T 10 --anchor-strength 0.9 --seed 42 --plot
 ```
 
-This demonstrates more volatile evolution with a low anchor (0.1), allowing reports to change more freely.
+This demonstrates GTStrategy with high anchor strength (0.9), meaning voters strongly anchor to their baseline reports while still adapting strategically.
 
-### Example 8: Strategic Reports with Kendall Tau Distance
+### Example 8: Using SimilarityStrategy (Backward Compatibility)
 
 ```bash
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor 0.5 --distance-metric kendall_tau --plot
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --strategy similarity_strategy --anchor-strength 0.5 --plot
 ```
 
-This uses Kendall Tau distance instead of Spearman footrule to measure similarity between rankings, which may produce different evolution patterns.
+This uses SimilarityStrategy with anchor_strength=0.5, demonstrating the similarity-based evolution approach.
+
+### Example 9: SimilarityStrategy with Kendall Tau Distance
+
+```bash
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --strategy similarity_strategy --anchor-strength 0.5 --distance-metric kendall_tau --plot
+```
+
+This uses SimilarityStrategy with Kendall Tau distance instead of Spearman footrule to measure similarity between rankings, which may produce different evolution patterns.
 
 ### Example 9: Visualize Single Election Probability Distribution
 
@@ -340,15 +376,15 @@ This generates 6 voters' rankings and displays a proportion plot showing the pro
 ### Example 10: Visualize Probability Evolution Over Time
 
 ```bash
-uv run python cli.py proportions --m 3 --n 6 --T 5 --anchor 0.5 --plot
+uv run python cli.py proportions --m 3 --n 6 --T 5 --plot
 ```
 
-This simulates strategic voting over 5 iterations and shows how candidate probabilities evolve over time in a stacked area chart.
+This simulates strategic voting over 5 iterations using GTStrategy (default) and shows how candidate probabilities evolve over time in a stacked area chart.
 
 ### Example 11: Probability Evolution with Baselines
 
 ```bash
-uv run python cli.py proportions --m 3 --baselines "0*5,3*5,4*5" --T 10 --plot
+uv run python cli.py proportions --m 3 --baselines "0*5,3*5,4*5" --T 10 --anchor-strength 0.2 --learning-rate 0.3 --sharpness 5.0 --plot
 ```
 
 This creates 15 voters with specific baseline rankings and shows how their probabilities evolve over 10 time steps.
@@ -385,6 +421,11 @@ gt-voting/
 │   ├── aggregator_core.py  # Ranking aggregation (probability distributions)
 │   ├── distance_metrics.py  # Distance metrics (Spearman, Kendall Tau, etc.)
 │   └── utils.py          # Shared utilities
+├── strategies/            # Voter strategies
+│   ├── __init__.py       # Strategy registry and auto-discovery
+│   ├── BaseStrategy.py   # Abstract base class for all strategies
+│   ├── GTStrategy.py     # GT (Game Theory) strategy
+│   └── SimilarityStrategy.py  # Similarity-based strategy
 ├── mechanisms/            # Aggregation mechanisms
 │   ├── __init__.py       # Mechanism registry and auto-discovery
 │   ├── BaseMechanism.py  # Abstract base class for all mechanisms

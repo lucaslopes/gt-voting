@@ -24,10 +24,10 @@ Examples:
   uv run python -m cli.proportions_cli --m 3 --baselines "0*5,3*5,4*5"
   
   # Strategic reports over T iterations
-  uv run python -m cli.proportions_cli --m 3 --n 6 --T 5 --anchor 0.5
+  uv run python -m cli.proportions_cli --m 3 --n 6 --T 5 --anchor-strength 0.5
   
   # Strategic reports with custom mechanism
-  uv run python -m cli.proportions_cli --m 3 --n 6 --T 10 --anchor 0.7 --mechanism pairwise_majority
+  uv run python -m cli.proportions_cli --m 3 --n 6 --T 10 --anchor-strength 0.7 --mechanism pairwise_majority
         """
     )
     
@@ -82,17 +82,66 @@ Examples:
              "If provided, n will be inferred from the total count. If not provided, baselines are sampled uniformly."
     )
     parser.add_argument(
-        "--anchor",
+        "--strategy",
+        type=str,
+        default="gt_strategy",
+        help="Strategy to use for evolving reports. Only used when --T is provided. "
+             "Available: gt_strategy, similarity_strategy (default: gt_strategy)"
+    )
+    # GTStrategy parameters
+    parser.add_argument(
+        "--anchor-strength",
         type=float,
-        default=0.5,
-        help="Anchor parameter (0-1) for strategic reports. Only used when --T is provided. "
-             "1.0 = reports never change, 0.0 = reports can change completely randomly (default: 0.5)"
+        default=None,
+        dest="anchor_strength",
+        help="Anchoring strength parameter (0-1). Controls how much voters stick to baseline. "
+             "Accepts --alpha as alias. Only used when --T is provided. "
+             "Default: 0.1 for GTStrategy, 0.5 for SimilarityStrategy"
+    )
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=None,
+        dest="anchor_strength",
+        help="Alias for --anchor-strength (deprecated, use --anchor-strength instead)"
+    )
+    parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=0.2,
+        dest="learning_rate",
+        help="Learning rate (0-1) for GTStrategy. Accepts --eta as alias. "
+             "Only used when --T is provided and --strategy=gt_strategy. "
+             "Controls update speed (default: 0.2)"
+    )
+    parser.add_argument(
+        "--eta",
+        type=float,
+        default=None,
+        dest="learning_rate",
+        help="Alias for --learning-rate (deprecated, use --learning-rate instead)"
+    )
+    parser.add_argument(
+        "--sharpness",
+        type=float,
+        default=3.0,
+        dest="sharpness",
+        help="Sharpness parameter (>0) for GTStrategy. Accepts --beta as alias. "
+             "Only used when --T is provided and --strategy=gt_strategy. "
+             "Controls exploration vs exploitation (default: 3.0)"
+    )
+    parser.add_argument(
+        "--beta",
+        type=float,
+        default=None,
+        dest="sharpness",
+        help="Alias for --sharpness (deprecated, use --sharpness instead)"
     )
     parser.add_argument(
         "--distance-metric",
         type=str,
         default="spearman",
-        help="Distance metric for strategic reports. Only used when --T is provided. "
+        help="Distance metric for SimilarityStrategy. Only used when --T is provided and --strategy=similarity_strategy. "
              "Available: spearman, kendall_tau (default: spearman)"
     )
     parser.add_argument(
@@ -121,8 +170,16 @@ Examples:
     if args.T is not None and args.T < 1:
         parser.error("Number of iterations (--T) must be at least 1")
     
-    if args.T is not None and not (0 <= args.anchor <= 1):
-        parser.error("Anchor parameter must be between 0 and 1")
+    # Handle default values based on strategy
+    if args.anchor_strength is None:
+        args.anchor_strength = 0.1 if args.strategy == "gt_strategy" else 0.5
+    if args.learning_rate is None:
+        args.learning_rate = 0.2
+    if args.sharpness is None:
+        args.sharpness = 3.0
+    
+    if args.T is not None and not (0 <= args.anchor_strength <= 1):
+        parser.error("Anchor strength parameter must be between 0 and 1")
     
     # Determine mode: strategic reports (if --T provided) or single election
     is_strategic = args.T is not None
@@ -159,10 +216,15 @@ Examples:
             strategies = generate_strategic_reports(
                 honest_reports=honest_reports,
                 T=args.T,
-                anchor=args.anchor,
                 m=args.m,
                 seed=args.seed,
-                distance_metric=args.distance_metric
+            strategy=args.strategy,
+            # GTStrategy parameters
+            anchor_strength=args.anchor_strength,
+            learning_rate=args.learning_rate,
+            sharpness=args.sharpness,
+            # SimilarityStrategy parameters
+            distance_metric=args.distance_metric
             )
         except ValueError as e:
             parser.error(str(e))
@@ -175,7 +237,11 @@ Examples:
         print(f"  Voters: {n}")
         print(f"  Candidates: {args.m}")
         print(f"  Time steps: {args.T + 1} (t=0 to t={args.T})")
-        print(f"  Anchor: {args.anchor}")
+        print(f"  Strategy: {args.strategy}")
+        if args.strategy == "gt_strategy":
+            print(f"  Anchor strength: {args.anchor_strength}, Learning Rate: {args.learning_rate}, Sharpness: {args.sharpness}")
+        else:
+            print(f"  Anchor strength: {args.anchor_strength}, Distance Metric: {args.distance_metric}")
         print(f"  Mechanism: {args.mechanism}")
         print()
         

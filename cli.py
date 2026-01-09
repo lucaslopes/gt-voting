@@ -140,18 +140,64 @@ def main():
         help="Number of iterations (time steps) for strategic evolution"
     )
     strategic_reports_parser.add_argument(
-        "--anchor",
+        "--strategy",
+        type=str,
+        default="gt_strategy",
+        help="Strategy to use for evolving reports (default: gt_strategy). "
+             "Available: gt_strategy, similarity_strategy"
+    )
+    # GTStrategy parameters
+    strategic_reports_parser.add_argument(
+        "--anchor-strength",
         type=float,
-        default=0.5,
-        help="Anchor parameter (0-1) controlling how closely reports stay to honest reports. "
-             "1.0 = reports never change, 0.0 = reports can change completely randomly (default: 0.5)"
+        default=None,
+        dest="anchor_strength",
+        help="Anchoring strength parameter (0-1). Controls how much voters stick to baseline. "
+             "Accepts --alpha as alias. Default: 0.1 for GTStrategy, 0.5 for SimilarityStrategy"
+    )
+    strategic_reports_parser.add_argument(
+        "--alpha",
+        type=float,
+        default=None,
+        dest="anchor_strength",
+        help="Alias for --anchor-strength (deprecated, use --anchor-strength instead)"
+    )
+    strategic_reports_parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=0.2,
+        dest="learning_rate",
+        help="Learning rate (0-1) for GTStrategy. Controls update speed. "
+             "Accepts --eta as alias. Only used when --strategy=gt_strategy (default: 0.2)"
+    )
+    strategic_reports_parser.add_argument(
+        "--eta",
+        type=float,
+        default=None,
+        dest="learning_rate",
+        help="Alias for --learning-rate (deprecated, use --learning-rate instead)"
+    )
+    strategic_reports_parser.add_argument(
+        "--sharpness",
+        type=float,
+        default=3.0,
+        dest="sharpness",
+        help="Sharpness parameter (>0) for GTStrategy. Controls exploration vs exploitation. "
+             "Accepts --beta as alias. Only used when --strategy=gt_strategy (default: 3.0)"
+    )
+    strategic_reports_parser.add_argument(
+        "--beta",
+        type=float,
+        default=None,
+        dest="sharpness",
+        help="Alias for --sharpness (deprecated, use --sharpness instead)"
     )
     strategic_reports_parser.add_argument(
         "--distance-metric",
         type=str,
         default="spearman",
-        help="Distance metric to use for similarity calculation (default: spearman). "
-             "Available: spearman"
+        help="Distance metric for SimilarityStrategy. Only used when --strategy=similarity_strategy. "
+             "Available: spearman, kendall_tau (default: spearman)"
     )
     strategic_reports_parser.add_argument(
         "--alphabetical",
@@ -206,17 +252,66 @@ def main():
              "If not provided, shows single election outcome."
     )
     proportions_parser.add_argument(
-        "--anchor",
+        "--strategy",
+        type=str,
+        default="gt_strategy",
+        help="Strategy to use for evolving reports. Only used when --T is provided. "
+             "Available: gt_strategy, similarity_strategy (default: gt_strategy)"
+    )
+    # GTStrategy parameters
+    proportions_parser.add_argument(
+        "--anchor-strength",
         type=float,
-        default=0.5,
-        help="Anchor parameter (0-1) for strategic reports. Only used when --T is provided. "
-             "1.0 = reports never change, 0.0 = reports can change completely randomly (default: 0.5)"
+        default=None,
+        dest="anchor_strength",
+        help="Anchoring parameter (0-1). Controls how much voters stick to baseline. "
+             "Accepts --alpha as alias. Only used when --T is provided. "
+             "Default: 0.1 for GTStrategy, 0.5 for SimilarityStrategy"
+    )
+    proportions_parser.add_argument(
+        "--alpha",
+        type=float,
+        default=None,
+        dest="anchor_strength",
+        help="Alias for --anchor-strength (deprecated, use --anchor-strength instead)"
+    )
+    proportions_parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=0.2,
+        dest="learning_rate",
+        help="Learning rate (0-1) for GTStrategy. Accepts --eta as alias. "
+             "Only used when --T is provided and --strategy=gt_strategy. "
+             "Controls update speed (default: 0.2)"
+    )
+    proportions_parser.add_argument(
+        "--eta",
+        type=float,
+        default=None,
+        dest="learning_rate",
+        help="Alias for --learning-rate (deprecated, use --learning-rate instead)"
+    )
+    proportions_parser.add_argument(
+        "--sharpness",
+        type=float,
+        default=3.0,
+        dest="sharpness",
+        help="Sharpness parameter (>0) for GTStrategy. Accepts --beta as alias. "
+             "Only used when --T is provided and --strategy=gt_strategy. "
+             "Controls exploration vs exploitation (default: 3.0)"
+    )
+    proportions_parser.add_argument(
+        "--beta",
+        type=float,
+        default=None,
+        dest="sharpness",
+        help="Alias for --sharpness (deprecated, use --sharpness instead)"
     )
     proportions_parser.add_argument(
         "--distance-metric",
         type=str,
         default="spearman",
-        help="Distance metric for strategic reports. Only used when --T is provided. "
+        help="Distance metric for SimilarityStrategy. Only used when --T is provided and --strategy=similarity_strategy. "
              "Available: spearman, kendall_tau (default: spearman)"
     )
     # Get available mechanisms for help text
@@ -247,6 +342,23 @@ def main():
     )
     
     args = parser.parse_args()
+    
+    # Handle default values based on strategy
+    if args.command == 'strategic-reports':
+        if args.anchor_strength is None:
+            args.anchor_strength = 0.1 if args.strategy == "gt_strategy" else 0.5
+        if args.learning_rate is None:
+            args.learning_rate = 0.2
+        if args.sharpness is None:
+            args.sharpness = 3.0
+    elif args.command == 'proportions':
+        if args.T is not None and args.anchor_strength is None:
+            args.anchor_strength = 0.1 if args.strategy == "gt_strategy" else 0.5
+        if args.T is not None:
+            if args.learning_rate is None:
+                args.learning_rate = 0.2
+            if args.sharpness is None:
+                args.sharpness = 3.0
     
     if args.command == 'rankings':
         # Build argument list for rankings CLI
@@ -284,7 +396,10 @@ def main():
         if args.baselines is not None:
             strategic_reports_args.extend(['--baselines', args.baselines])
         strategic_reports_args.extend(['--T', str(args.T)])
-        strategic_reports_args.extend(['--anchor', str(args.anchor)])
+        strategic_reports_args.extend(['--strategy', args.strategy])
+        strategic_reports_args.extend(['--anchor-strength', str(args.anchor_strength)])
+        strategic_reports_args.extend(['--learning-rate', str(args.learning_rate)])
+        strategic_reports_args.extend(['--sharpness', str(args.sharpness)])
         strategic_reports_args.extend(['--distance-metric', args.distance_metric])
         if args.alphabetical:
             strategic_reports_args.append('--alphabetical')
@@ -302,7 +417,10 @@ def main():
             proportions_args.extend(['--baselines', args.baselines])
         if args.T is not None:
             proportions_args.extend(['--T', str(args.T)])
-            proportions_args.extend(['--anchor', str(args.anchor)])
+            proportions_args.extend(['--strategy', args.strategy])
+            proportions_args.extend(['--anchor-strength', str(args.anchor_strength)])
+            proportions_args.extend(['--learning-rate', str(args.learning_rate)])
+            proportions_args.extend(['--sharpness', str(args.sharpness)])
             proportions_args.extend(['--distance-metric', args.distance_metric])
         proportions_args.extend(['--mechanism', args.mechanism])
         if args.title is not None:

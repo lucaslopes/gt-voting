@@ -8,6 +8,7 @@ from math import factorial
 from core.utils import spawn_rng
 from core.rankings_core import candidate_labels
 from core.honest_reports import parse_baselines
+from core.graph_utils import compute_degrees
 
 # ==========================================
 # Configuration Constants
@@ -21,15 +22,17 @@ ALPHA_MAX_REFINES = 10  # Maximum number of refinement iterations
 
 
 class IterativeVotingSystem:
-    def __init__(self, m, n, alpha, eta, beta, baselines=None, rng=None):
+    def __init__(self, m, n, alpha, eta, beta, baselines=None, rng=None, graph=None):
         self.m = m
         self.n = n
         self.alpha = alpha
         self.eta = eta
         self.beta = beta
         self.rng = spawn_rng(None, rng)
+        self.graph = graph
         
         # Complete graph or a "clique" (all voters are connected to all others)
+        # This is kept for backward compatibility, but degrees are computed from graph
         self.adj = np.ones((n, n)) - np.eye(n)
         
         # Permutations
@@ -108,21 +111,36 @@ class IterativeVotingSystem:
         
         # 2. Update Strategies
         # Score s_i(pi) = - deg_i * <p_tilde, r_pi>
-        # (Assuming complete graph, deg_i is const, same logic as before)
-        deg = self.n - 1
-        scores = -1.0 * deg * (self.rank_vectors @ p_tilde) # Shape [n_perms]
+        # This implements Term B: -|N(i)| * <p_tilde, r_pi> for each voter i
+        # Term A (sum over neighbors' rankings) is constant w.r.t. π and can be ignored
+        # due to Softmax translation invariance
+        # Compute per-voter degrees from graph (complete graph default if graph is None)
+        deg = compute_degrees(self.graph, self.n)
         
-        # Logit
-        scores -= np.max(scores)
-        sbr = np.exp(self.beta * scores)
-        sbr /= np.sum(sbr)
+        # Precompute dot products: rank_vectors @ p_tilde gives [n_perms]
+        dot_products = self.rank_vectors @ p_tilde  # Shape: [n_perms]
         
-        # Update x
-        # anchor_term: each voter has their own baseline
+        # Compute scores for all voters and permutations using broadcasting
+        # deg: shape (n,), dot_products: shape (n_perms,)
+        # scores: shape (n, n_perms) where scores[i, k] = -deg[i] * <p_tilde, r_k>
+        scores = -deg[:, np.newaxis] * dot_products[np.newaxis, :]  # Shape: [n, n_perms]
+        
+        # Logit response: normalize scores per voter to avoid overflow
+        # Subtract max per voter (along permutation axis)
+        scores -= np.max(scores, axis=1, keepdims=True)  # Shape: [n, n_perms]
+        sbr = np.exp(self.beta * scores)  # Shape: [n, n_perms]
+        sbr /= np.sum(sbr, axis=1, keepdims=True)  # Normalize to probability distribution per voter
+        
+        # Update x for each voter
         for i in range(self.n):
+            # Anchor: one-hot vector at baseline permutation
             anchor = np.zeros(self.n_perms)
             anchor[self.baselines[i]] = 1.0
-            self.x[i] = (1 - self.eta) * self.x[i] + self.eta * ((1 - self.alpha) * sbr + self.alpha * anchor)
+            
+            # Update: x[i] = (1 - eta) * x[i] + eta * ((1 - alpha) * sbr[i] + alpha * anchor)
+            self.x[i] = (1 - self.eta) * self.x[i] + self.eta * (
+                (1 - self.alpha) * sbr[i] + self.alpha * anchor
+            )
         
         # Record dominant strategy for heatmap
         # Argmax of x[i]
