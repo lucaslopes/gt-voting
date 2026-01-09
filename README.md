@@ -193,8 +193,11 @@ uv run python cli.py proportions --m 3 --n 6 --T 5 --anchor 0.5
 # With baselines - use specific baseline rankings
 uv run python cli.py proportions --m 3 --baselines "0*5,3*5,4*5" --T 10
 
-# Custom aggregation mechanism
+# Custom aggregation mechanism (pairwise majority)
 uv run python cli.py proportions --m 3 --n 6 --T 5 --anchor 0.5 --mechanism pairwise_majority
+
+# Using plurality mechanism
+uv run python cli.py proportions --m 3 --n 6 --T 5 --anchor 0.5 --mechanism plurality
 
 # Custom title for the plot
 uv run python cli.py proportions --m 3 --n 6 --T 5 --anchor 0.5 --title "Election Evolution"
@@ -218,11 +221,26 @@ The `proportions` command operates in two modes:
    - Shows evolution of candidate probabilities over time as a stacked area chart
    - Useful for analyzing how voting outcomes change as voters' strategies evolve
 
-#### Aggregation Mechanism
+#### Aggregation Mechanisms
 
-The `--mechanism` parameter selects how to aggregate rankings into probabilities:
+The `--mechanism` parameter selects how to aggregate rankings into probabilities. Available mechanisms:
 
-- **pairwise_majority** (default): Pairwise Majority Rule - candidates are ranked by the number of head-to-head matchups they win. Each candidate's probability is proportional to the number of other candidates they beat in pairwise comparisons (strict majority required).
+- **GT** (default in `aggregate_rankings`): GT (Game Theory) voting system - models the election as a zero-sum game and finds the optimal mixed strategy using linear programming. Implements the Rivest-Shen GT voting system.
+  - Computes a margin matrix M where M[i,j] = (votes i > j) - (votes j > i) for all pairwise comparisons
+  - Transforms this into a zero-sum game and finds the Nash equilibrium strategy using linear programming
+  - Returns probabilities that represent the optimal mixed strategy, ensuring no candidate can be exploited
+  - Particularly effective for handling Condorcet cycles (e.g., rock-paper-scissors scenarios)
+  - Example: For a symmetric cycle [(0,1,2), (1,2,0), (2,0,1)], returns equal probabilities [0.333..., 0.333..., 0.333...]
+
+- **pairwise_majority** (default in `proportions` CLI): Pairwise Majority Rule - candidates are ranked by the number of head-to-head matchups they win. Each candidate's probability is proportional to the number of other candidates they beat in pairwise comparisons (strict majority required).
+  - For each pair of candidates, determines which candidate is preferred by a strict majority (> n/2) of voters
+  - Each candidate's probability is proportional to the number of head-to-head matchups they win
+  - Example: If candidate A beats candidates B and C in pairwise comparisons, and candidate B beats C, then probabilities are proportional to [2 wins, 1 win, 0 wins]
+
+- **plurality**: Plurality Rule - each candidate's probability equals the fraction of voters who ranked them as their top choice (first position).
+  - Probability = (number of times candidate is top1) / (total number of voters)
+  - Simple and intuitive: the more voters rank a candidate first, the higher their probability
+  - Example: If candidate A is top1 in 4 out of 10 rankings, their probability is 0.4
 
 #### Options
 
@@ -233,7 +251,7 @@ The `--mechanism` parameter selects how to aggregate rankings into probabilities
 - `--T` (int, optional): Number of iterations for strategic reports. If provided, uses strategic reports mode. If not provided, uses single election mode.
 - `--anchor` (float): Anchor parameter (0-1) for strategic reports. Only used when `--T` is provided (default: 0.5)
 - `--distance-metric` (str): Distance metric for strategic reports. Only used when `--T` is provided. Available: `spearman` (default), `kendall_tau`
-- `--mechanism` (str): Aggregation mechanism for converting rankings to probabilities (default: `pairwise_majority`)
+- `--mechanism` (str): Aggregation mechanism for converting rankings to probabilities (default: `pairwise_majority`). Available: `GT`, `pairwise_majority`, `plurality`
 - `--title` (str): Custom title for the plot
 - `--show-integers` (flag): Show candidate integers instead of alphabetical labels in legend
 
@@ -317,7 +335,7 @@ This uses Kendall Tau distance instead of Spearman footrule to measure similarit
 uv run python cli.py proportions --m 3 --n 6 --seed 42 --plot
 ```
 
-This generates 6 voters' rankings and displays a proportion plot showing the probability distribution over the 3 candidates using Pairwise Majority Rule.
+This generates 6 voters' rankings and displays a proportion plot showing the probability distribution over the 3 candidates using Pairwise Majority Rule (default mechanism for `proportions` command).
 
 ### Example 10: Visualize Probability Evolution Over Time
 
@@ -334,6 +352,21 @@ uv run python cli.py proportions --m 3 --baselines "0*5,3*5,4*5" --T 10 --plot
 ```
 
 This creates 15 voters with specific baseline rankings and shows how their probabilities evolve over 10 time steps.
+
+### Example 12: Compare Different Aggregation Mechanisms
+
+```bash
+# GT mechanism (Game Theory)
+uv run python cli.py proportions --m 3 --n 6 --seed 42 --mechanism GT
+
+# Pairwise Majority Rule
+uv run python cli.py proportions --m 3 --n 6 --seed 42 --mechanism pairwise_majority
+
+# Plurality Rule
+uv run python cli.py proportions --m 3 --n 6 --seed 42 --mechanism plurality
+```
+
+This demonstrates how different aggregation mechanisms can produce different probability distributions from the same set of rankings.
 
 ## Project Structure
 
@@ -352,12 +385,29 @@ gt-voting/
 │   ├── aggregator_core.py  # Ranking aggregation (probability distributions)
 │   ├── distance_metrics.py  # Distance metrics (Spearman, Kendall Tau, etc.)
 │   └── utils.py          # Shared utilities
+├── mechanisms/            # Aggregation mechanisms
+│   ├── __init__.py       # Mechanism registry and auto-discovery
+│   ├── BaseMechanism.py  # Abstract base class for all mechanisms
+│   ├── GT.py             # GT (Game Theory) mechanism
+│   ├── PairwiseMajority.py  # Pairwise Majority Rule mechanism
+│   └── Plurality.py      # Plurality Rule mechanism
 └── plots/                 # Plotting utilities
     ├── plot_rankings.py   # Rankings visualization
     ├── plot_voter_strategies.py  # Strategy visualization
     ├── plot_proportions.py  # Proportion plots (stacked area charts)
     └── plot_utils.py      # Shared plotting utilities
 ```
+
+### Mechanism Architecture
+
+The aggregation mechanisms are implemented as classes inheriting from `BaseMechanism`. The system automatically discovers all mechanisms in the `mechanisms/` directory:
+
+- **BaseMechanism**: Abstract base class defining the interface for all mechanisms
+- **GT**: Implements the Rivest-Shen GT (Game Theory) voting system using linear programming to find Nash equilibrium strategies
+- **PairwiseMajority**: Implements Pairwise Majority Rule aggregation
+- **Plurality**: Implements Plurality Rule aggregation
+
+New mechanisms can be added by creating a new class file in `mechanisms/` that inherits from `BaseMechanism`. The mechanism will be automatically discovered and available via the `--mechanism` parameter.
 
 ## Development
 

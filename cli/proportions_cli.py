@@ -8,6 +8,7 @@ from core.rankings_core import generate_rankings, candidate_labels
 from core.strategic_reports import generate_strategic_reports
 from core.aggregator_core import aggregate_rankings
 from plots.plot_proportions import plot_proportions
+from mechanisms import list_mechanisms
 
 
 def main(args=None):
@@ -37,11 +38,15 @@ Examples:
         default=3,
         help="Number of candidates (default: 3)"
     )
+    # Get available mechanisms for help text
+    available_mechanisms = list_mechanisms()
+    mechanism_help = f"Aggregation mechanism (default: GT). Available: {', '.join(available_mechanisms)}"
+    
     parser.add_argument(
         "--mechanism",
         type=str,
-        default="pairwise_majority",
-        help="Aggregation mechanism (default: pairwise_majority)"
+        default="GT",
+        help=mechanism_help
     )
     
     # Mode selection: either single election or strategic reports

@@ -5,6 +5,7 @@ from cli.rankings_cli import main as rankings_main
 from cli.honest_reports_cli import main as honest_reports_main
 from cli.strategic_reports_cli import main as strategic_reports_main
 from cli.proportions_cli import main as proportions_main
+from mechanisms import list_mechanisms
 
 
 def main():
@@ -218,11 +219,15 @@ def main():
         help="Distance metric for strategic reports. Only used when --T is provided. "
              "Available: spearman, kendall_tau (default: spearman)"
     )
+    # Get available mechanisms for help text
+    available_mechanisms = list_mechanisms()
+    mechanism_help = f"Aggregation mechanism (default: GT). Available: {', '.join(available_mechanisms)}"
+    
     proportions_parser.add_argument(
         "--mechanism",
         type=str,
-        default="pairwise_majority",
-        help="Aggregation mechanism (default: pairwise_majority)"
+        default="GT",
+        help=mechanism_help
     )
     proportions_parser.add_argument(
         "--title",
