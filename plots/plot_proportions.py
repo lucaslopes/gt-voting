@@ -34,12 +34,12 @@ def plot_proportions(
     
     This function visualizes how candidate probabilities evolve over time. It can handle:
     - Single election: List of rankings (one time step)
-    - Multiple time steps: Strategic reports array [n, T+1] where each cell is a ranking index
+    - Multiple time steps: Strategic reports array [voters, T+1] where each cell is a ranking index
     
     Args:
         reported_rankings_or_strategies: Either:
             - List of ranking tuples for single election (e.g., [(0,1,2), (1,0,2), ...])
-            - numpy array of shape [n, T+1] where each cell is a ranking index (for strategic reports)
+            - numpy array of shape [voters, T+1] where each cell is a ranking index (for strategic reports)
         m: Number of candidates (required if all_rankings is None and input is strategic reports array)
         all_rankings: List of all possible ranking tuples (required if input is strategic reports array)
         labels: Optional list of candidate labels. If None, will generate A, B, C, etc.
@@ -69,11 +69,11 @@ def plot_proportions(
     is_strategic_reports = isinstance(reported_rankings_or_strategies, np.ndarray)
     
     if is_strategic_reports:
-        # Strategic reports: array of shape [n, T+1] with ranking indices
+        # Strategic reports: array of shape [voters, T+1] with ranking indices
         strategies = reported_rankings_or_strategies
         
         if strategies.ndim != 2:
-            raise ValueError(f"strategies must be 2D array [n, T+1], got shape {strategies.shape}")
+            raise ValueError(f"strategies must be 2D array [voters, T+1], got shape {strategies.shape}")
         
         n_voters, n_timesteps = strategies.shape
         
@@ -153,7 +153,7 @@ def plot_proportions(
         legend_labels = [str(c) for c in candidates]
     
     # Convert probabilities_over_time to numpy array for easier manipulation
-    # Shape: [n_timesteps, m]
+    # Shape: [n_timesteps, candidates]
     prob_array = np.array(probabilities_over_time)
     _debug_log("plot_proportions.py:144", "Prob array before plotting", {"prob_array": prob_array.tolist(), "shape": prob_array.shape, "x_axis": x_axis.tolist(), "is_strategic": is_strategic_reports}, "H3")
     
@@ -187,9 +187,10 @@ def plot_proportions(
         _debug_log("plot_proportions.py:168", "Bar chart created", {"bars_created": m}, "H2")
     
     # Configure axes
-    ax.set_xlabel(x_label, fontsize=12)
-    ax.set_ylabel("Probability", fontsize=12)
+    ax.set_xlabel(x_label, fontsize=18)
+    ax.set_ylabel("Probability", fontsize=18)
     ax.set_ylim(0, 1)
+    ax.tick_params(axis='both', which='major', labelsize=15)
     
     # Set x-axis ticks and limits (tight from 0 to T)
     if is_strategic_reports:
@@ -208,7 +209,7 @@ def plot_proportions(
     ax.grid(True, alpha=0.3, linestyle='--')
     
     # Add legend
-    ax.legend(loc='upper right', framealpha=0.9, fontsize=10)
+    ax.legend(loc='upper right', framealpha=0.9, fontsize=15)
     
     # Final axis state check
     _debug_log("plot_proportions.py:180", "Final axis state", {"xlim": ax.get_xlim(), "ylim": ax.get_ylim(), "has_data": len(ax.patches) > 0 or len(ax.collections) > 0, "patches": len(ax.patches), "collections": len(ax.collections)}, "H4")
@@ -217,20 +218,20 @@ def plot_proportions(
     if title is None:
         if is_strategic_reports:
             ax.set_title(
-                f"Probability Distribution Evolution ({n_voters} voters, {m} candidates, {n_timesteps} time steps)",
-                fontsize=14,
+                f"Probability Distribution Evolution\n({n_voters} voters, {m} candidates, {n_timesteps} time steps)",
+                fontsize=21,
                 fontweight='bold',
                 pad=20
             )
         else:
             ax.set_title(
-                f"Probability Distribution ({len(reported_rankings)} voters, {m} candidates)",
-                fontsize=14,
+                f"Probability Distribution\n({len(reported_rankings)} voters, {m} candidates)",
+                fontsize=21,
                 fontweight='bold',
                 pad=20
             )
     else:
-        ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
+        ax.set_title(title, fontsize=21, fontweight='bold', pad=20)
     
     return ax
 

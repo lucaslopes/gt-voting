@@ -4,6 +4,24 @@ from plots.plot_rankings import plot_rankings_list
 import matplotlib.pyplot as plt
 
 
+def generate_pdf_filename(args):
+    """
+    Generate a descriptive PDF filename based on command-line arguments.
+    
+    Args:
+        args: Parsed command-line arguments
+        
+    Returns:
+        str: Filename for the PDF file
+    """
+    parts = ["rankings"]
+    parts.append(f"m{args.m}")
+    if args.layout != 'auto':
+        parts.append(f"layout_{args.layout}")
+    
+    return "_".join(parts) + ".pdf"
+
+
 def main(args=None):
     parser = argparse.ArgumentParser(
         description="Generate and display all possible candidate rankings",
@@ -51,6 +69,11 @@ Examples:
         help="Display a visual plot of all rankings (in addition to terminal output)"
     )
     parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Export the plot as a high-quality PDF file"
+    )
+    parser.add_argument(
         "--layout",
         type=str,
         choices=['horizontal', 'vertical', 'matrix', 'auto'],
@@ -74,11 +97,27 @@ Examples:
         print(ranking)
     
     # Plot if requested
-    if args.plot:
+    if args.plot or args.save:
         # _prepare_labels() in plot_rankings.py will handle label generation/extraction
         # Pass show_integers flag to respect the --alphabetical CLI argument
-        plot_rankings_list(rankings, labels=None, layout=args.layout, show_integers=not args.alphabetical)
-        plt.show()
+        ax = plot_rankings_list(rankings, labels=None, layout=args.layout, show_integers=not args.alphabetical)
+        
+        # Save as PDF if requested
+        if args.save:
+            filename = generate_pdf_filename(args)
+            fig = ax.figure
+            fig.savefig(
+                filename,
+                format='pdf',
+                dpi=300,
+                bbox_inches='tight',
+                pad_inches=0.1
+            )
+            print(f"Plot saved to: {filename}")
+        
+        # Show plot if requested
+        if args.plot:
+            plt.show()
 
 
 if __name__ == "__main__":

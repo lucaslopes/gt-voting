@@ -11,6 +11,32 @@ from plots.plot_proportions import plot_proportions
 from mechanisms import list_mechanisms
 
 
+def generate_pdf_filename(args):
+    """
+    Generate a descriptive PDF filename based on command-line arguments.
+    
+    Args:
+        args: Parsed command-line arguments
+        
+    Returns:
+        str: Filename for the PDF file
+    """
+    parts = ["proportions"]
+    parts.append(f"m{args.m}")
+    
+    if args.T is not None:
+        parts.append(f"T{args.T}")
+        # Include strategy parameters if T is provided
+        parts.append(f"lr{args.learning_rate:.1f}")
+        parts.append(f"sh{args.sharpness:.1f}")
+        parts.append(f"as{args.anchor_strength:.1f}")
+    
+    # Add mechanism
+    parts.append(args.mechanism)
+    
+    return "_".join(parts) + ".pdf"
+
+
 def main(args=None):
     parser = argparse.ArgumentParser(
         description="Visualize probability distributions as proportion plots",
@@ -160,6 +186,11 @@ Examples:
         action="store_true",
         help="Display a visual proportion plot (stacked area chart)"
     )
+    parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Export the plot as a high-quality PDF file"
+    )
     
     args = parser.parse_args(args)
     
@@ -213,7 +244,7 @@ Examples:
         
         # Generate strategic reports
         try:
-            strategies = generate_strategic_reports(
+            strategies_result = generate_strategic_reports(
                 honest_reports=honest_reports,
                 T=args.T,
                 m=args.m,
@@ -228,6 +259,9 @@ Examples:
             )
         except ValueError as e:
             parser.error(str(e))
+        
+        # Extract the reports array from the dict (generate_strategic_reports returns a dict)
+        strategies = strategies_result["reports"]
         
         # Get all possible rankings
         all_rankings = generate_rankings(args.m, alphabetical=False)
@@ -252,8 +286,8 @@ Examples:
             print(f"Time step t={t}: {probs}")
         
         # Plot if requested
-        if args.plot:
-            plot_proportions(
+        if args.plot or args.save:
+            ax = plot_proportions(
                 strategies,
                 m=args.m,
                 all_rankings=all_rankings,
@@ -263,7 +297,23 @@ Examples:
                 title=args.title,
                 show_integers=args.show_integers
             )
-            plt.show()
+            
+            # Save as PDF if requested
+            if args.save:
+                filename = generate_pdf_filename(args)
+                fig = ax.figure
+                fig.savefig(
+                    filename,
+                    format='pdf',
+                    dpi=300,
+                    bbox_inches='tight',
+                    pad_inches=0.1
+                )
+                print(f"Plot saved to: {filename}")
+            
+            # Show plot if requested
+            if args.plot:
+                plt.show()
         
     else:
         # Single election mode: generate one set of rankings
@@ -314,8 +364,8 @@ Examples:
         print()
         
         # Plot if requested
-        if args.plot:
-            plot_proportions(
+        if args.plot or args.save:
+            ax = plot_proportions(
                 reported_rankings,
                 m=args.m,
                 all_rankings=None,
@@ -325,7 +375,23 @@ Examples:
                 title=args.title,
                 show_integers=args.show_integers
             )
-            plt.show()
+            
+            # Save as PDF if requested
+            if args.save:
+                filename = generate_pdf_filename(args)
+                fig = ax.figure
+                fig.savefig(
+                    filename,
+                    format='pdf',
+                    dpi=300,
+                    bbox_inches='tight',
+                    pad_inches=0.1
+                )
+                print(f"Plot saved to: {filename}")
+            
+            # Show plot if requested
+            if args.plot:
+                plt.show()
 
 
 if __name__ == "__main__":

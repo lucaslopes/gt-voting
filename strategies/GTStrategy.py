@@ -98,11 +98,18 @@ class GTStrategy(BaseStrategy):
             **kwargs: Additional parameters (not used, for compatibility)
         
         Returns:
-            numpy array of shape [n, T+1] where:
-            - n is the number of voters
-            - Column 0 contains honest reports (initial state)
-            - Columns 1..T contain evolved reports at each iteration
-            - Each cell contains a ranking index (position in all_rankings)
+            dict with at least the following keys:
+                "reports": numpy array of shape [n, T+1] where:
+                    - n is the number of voters
+                    - Column 0 contains honest reports (initial state)
+                    - Columns 1..T contain evolved reports at each iteration
+                    - Each cell contains a ranking index (position in all_rankings)
+                "selected_probs": numpy array of shape [n, T+1] where:
+                    - selected_probs[i, t] is the probability mass that voter i's
+                      internal strategy distribution x assigns to their selected
+                      (most likely) ranking at time step t.
+                    - Column 0 is identically 1.0, since each voter starts with
+                      probability 1.0 on their honest baseline ranking.
         
         Raises:
             ValueError: If honest_reports is empty, T < 1, m < 1, or other validation fails
@@ -135,6 +142,10 @@ class GTStrategy(BaseStrategy):
         # Column 0 will be honest reports, columns 1..T will be evolved reports
         reports = np.zeros((n, T + 1), dtype=int)
         reports[:, 0] = baselines
+
+        # Track probability of the selected (most likely) ranking for each voter and time
+        # At t=0, each voter has probability 1.0 on their honest baseline ranking
+        selected_probs = np.ones((n, T + 1), dtype=float)
         
         # Compute per-voter degrees from graph (complete graph default if graph is None)
         deg = compute_degrees(graph, n)
@@ -160,8 +171,14 @@ class GTStrategy(BaseStrategy):
             # Record most likely ranking for each voter (argmax of x[i])
             most_likely_indices = np.argmax(x, axis=1)
             reports[:, t] = most_likely_indices
+
+            # Record the probability assigned to the selected (most likely) ranking
+            selected_probs[:, t] = x[np.arange(n), most_likely_indices]
         
-        return reports
+        return {
+            "reports": reports,
+            "selected_probs": selected_probs,
+        }
     
     def _compute_rank_vectors(self, m, all_rankings):
         """

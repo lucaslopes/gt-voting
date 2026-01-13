@@ -6,6 +6,26 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+def generate_pdf_filename(args, n):
+    """
+    Generate a descriptive PDF filename based on command-line arguments.
+    
+    Args:
+        args: Parsed command-line arguments
+        n: Number of voters
+        
+    Returns:
+        str: Filename for the PDF file
+    """
+    parts = ["honest_reports"]
+    parts.append(f"m{args.m}")
+    parts.append(f"n{n}")
+    if args.seed != 0:
+        parts.append(f"seed{args.seed}")
+    
+    return "_".join(parts) + ".pdf"
+
+
 def main(args=None):
     parser = argparse.ArgumentParser(
         description="Generate honest reports from baselines or seed",
@@ -66,6 +86,11 @@ Examples:
         action="store_true",
         help="Display a visual heatmap of voter strategies (in addition to terminal output)"
     )
+    parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Export the plot as a high-quality PDF file"
+    )
     
     args = parser.parse_args(args)
     
@@ -113,7 +138,7 @@ Examples:
             print(ranking)
     
     # Plot if requested
-    if args.plot:
+    if args.plot or args.save:
         # Get all possible rankings to find indices
         all_rankings = generate_rankings(args.m, alphabetical=False)
         
@@ -125,18 +150,38 @@ Examples:
         strategies = np.zeros((n, 1), dtype=int)
         for i, report in enumerate(honest_reports):
             strategies[i, 0] = ranking_to_index[report]
+
+        # For honest reports, each voter reports their baseline with probability 1.0
+        selected_probs = np.ones_like(strategies, dtype=float)
         
         # Plot the heatmap
         # Always use alphabetical labels in plot for readability (show_integers=False)
-        plot_voter_strategies(
+        ax = plot_voter_strategies(
             strategies,
             all_rankings,
             labels=None,
             ax=None,
             show_integers=False,
-            title=f"Honest Reports ({n} voters, {args.m} candidates)"
+            title=f"Honest Reports ({n} voters, {args.m} candidates)",
+            probs=selected_probs,
         )
-        plt.show()
+        
+        # Save as PDF if requested
+        if args.save:
+            filename = generate_pdf_filename(args, n)
+            fig = ax.figure
+            fig.savefig(
+                filename,
+                format='pdf',
+                dpi=300,
+                bbox_inches='tight',
+                pad_inches=0.1
+            )
+            print(f"Plot saved to: {filename}")
+        
+        # Show plot if requested
+        if args.plot:
+            plt.show()
 
 
 if __name__ == "__main__":

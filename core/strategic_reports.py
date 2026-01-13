@@ -49,11 +49,17 @@ def generate_strategic_reports(
                Only used by GTStrategy.
     
     Returns:
-        numpy array of shape [n, T+1] where:
-        - n is the number of voters
-        - Column 0 contains honest reports (initial state)
-        - Columns 1..T contain evolved reports at each iteration
-        - Each cell contains a ranking index (position in all_rankings)
+        dict with at least the following key:
+            "reports": numpy array of shape [n, T+1] where:
+                - n is the number of voters
+                - Column 0 contains honest reports (initial state)
+                - Columns 1..T contain evolved reports at each iteration
+                - Each cell contains a ranking index (position in all_rankings)
+
+        For GTStrategy, additional keys may be present, including:
+            "selected_probs": numpy array of shape [n, T+1] giving, for each
+                voter and time step, the probability mass the internal strategy
+                distribution assigns to the selected (most likely) ranking.
     
     Raises:
         ValueError: If strategy name is unknown or parameters are invalid
@@ -74,7 +80,7 @@ def generate_strategic_reports(
             sharpness=sharpness
         )
         # GTStrategy doesn't use distance_metric in generate_reports
-        return strategy_instance.generate_reports(
+        result = strategy_instance.generate_reports(
             honest_reports, T, m, seed=seed, rng=rng, graph=graph
         )
     elif strategy == "similarity_strategy":
@@ -83,12 +89,18 @@ def generate_strategic_reports(
             distance_metric=distance_metric
         )
         # SimilarityStrategy uses anchor_strength in generate_reports
-        return strategy_instance.generate_reports(
+        result = strategy_instance.generate_reports(
             honest_reports, T, m, seed=seed, rng=rng, anchor_strength=anchor_strength
         )
     else:
         # For any future strategies, try with minimal parameters
         strategy_instance = get_strategy_instance(strategy)
-        return strategy_instance.generate_reports(
+        result = strategy_instance.generate_reports(
             honest_reports, T, m, seed=seed, rng=rng
         )
+
+    # Normalize return type to a dict with at least "reports"
+    if isinstance(result, dict):
+        return result
+
+    return {"reports": result}

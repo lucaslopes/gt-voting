@@ -104,7 +104,7 @@ def _add_cell_labels(ax, rankings, perm_labels, n_rows, n_cols):
         col = idx % n_cols
         if row < n_rows and col < n_cols:
             ax.text(col, row, perm_labels[idx], ha='center', va='center', 
-                   fontsize=9, fontweight='bold', color='white')
+                   fontsize=14, fontweight='bold', color='white')
 
 
 def _configure_axes(ax, n_rows, n_cols, n_candidates, n_rankings):
@@ -123,7 +123,7 @@ def _configure_axes(ax, n_rows, n_cols, n_candidates, n_rankings):
     ax.set_xticklabels([])
     ax.set_yticklabels([])
     ax.set_title(f"All Possible Rankings for {n_candidates} Candidates (Total: {n_rankings})", 
-                 fontsize=14, fontweight='bold', pad=20)
+                 fontsize=21, fontweight='bold', pad=20)
 
 
 def _add_colorbar(im, ax, perm_labels, n_rankings):
@@ -142,9 +142,9 @@ def _add_colorbar(im, ax, perm_labels, n_rankings):
     tick_locs = np.arange(n_rankings)
     bounds = np.arange(n_rankings + 1) - 0.5
     cbar = plt.colorbar(im, ax=ax, ticks=tick_locs, boundaries=bounds)
-    cbar.ax.set_yticklabels(perm_labels)
+    cbar.ax.set_yticklabels(perm_labels, fontsize=15)
     cbar.ax.invert_yaxis()  # Put first ranking at top
-    cbar.set_label("Reported Ranking")
+    cbar.set_label("Reported Ranking", fontsize=17)
     return cbar
 
 
@@ -175,7 +175,7 @@ def plot_rankings_list(rankings, labels=None, layout='auto', ax=None, show_integ
     
     n_rankings = len(rankings)
     if n_rankings == 0:
-        ax.text(0.5, 0.5, "No rankings to display", ha='center', va='center', fontsize=14)
+        ax.text(0.5, 0.5, "No rankings to display", ha='center', va='center', fontsize=21)
         ax.axis('off')
         return ax
     

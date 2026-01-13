@@ -8,6 +8,28 @@ from plots.plot_voter_strategies import plot_voter_strategies
 import matplotlib.pyplot as plt
 
 
+def generate_pdf_filename(args):
+    """
+    Generate a descriptive PDF filename based on command-line arguments.
+    
+    Args:
+        args: Parsed command-line arguments
+        
+    Returns:
+        str: Filename for the PDF file
+    """
+    parts = ["strategic_reports"]
+    parts.append(f"m{args.m}")
+    parts.append(f"T{args.T}")
+    # Include strategy parameters
+    parts.append(f"lr{args.learning_rate:.1f}")
+    parts.append(f"sh{args.sharpness:.1f}")
+    parts.append(f"as{args.anchor_strength:.1f}")
+    parts.append(args.strategy)
+    
+    return "_".join(parts) + ".pdf"
+
+
 def main(args=None):
     parser = argparse.ArgumentParser(
         description="Generate strategic reports that evolve over T iterations",
@@ -141,6 +163,11 @@ Examples:
         help="Display a visual heatmap of voter strategy evolution over T iterations"
     )
     parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Export the plot as a high-quality PDF file"
+    )
+    parser.add_argument(
         "--graph",
         type=str,
         default=None,
@@ -220,7 +247,7 @@ Examples:
     
     # Generate strategic reports
     try:
-        strategies = generate_strategic_reports(
+        results = generate_strategic_reports(
             honest_reports=honest_reports,
             T=args.T,
             m=args.m,
@@ -237,6 +264,10 @@ Examples:
         )
     except ValueError as e:
         parser.error(str(e))
+
+    # Unpack standardized results dict
+    strategies = results["reports"]
+    selected_probs = results.get("selected_probs")
     
     # Get all possible rankings for output formatting
     all_rankings = generate_rankings(args.m, alphabetical=False)
@@ -262,17 +293,34 @@ Examples:
                 print(f"  t={t}: {ranking}")
     
     # Plot if requested
-    if args.plot:
+    if args.plot or args.save:
         # Plot the heatmap showing trajectory over T+1 time steps (including t=0)
-        plot_voter_strategies(
+        ax = plot_voter_strategies(
             strategies,
             all_rankings,
             labels=None,
             ax=None,
             show_integers=False,
-            title=f"Strategic Reports Evolution (n={n}, m={args.m}, T={args.T}, strategy={args.strategy})"
+            title=(f"Strategic Reports Evolution\n({n} voters, {args.m} candidates, {args.T+1} time steps)"),
+            probs=selected_probs,
         )
-        plt.show()
+        
+        # Save as PDF if requested
+        if args.save:
+            filename = generate_pdf_filename(args)
+            fig = ax.figure
+            fig.savefig(
+                filename,
+                format='pdf',
+                dpi=300,
+                bbox_inches='tight',
+                pad_inches=0.1
+            )
+            print(f"Plot saved to: {filename}")
+        
+        # Show plot if requested
+        if args.plot:
+            plt.show()
 
 
 if __name__ == "__main__":

@@ -56,6 +56,7 @@ uv run python cli.py rankings --m 4 --plot --layout matrix
 - `--m`, `--candidates` (int): Number of candidates (required)
 - `--alphabetical` (flag): Output rankings in alphabetical format instead of integer tuples
 - `--plot` (flag): Display a visual heatmap of all rankings
+- `--save` (flag): Export the plot as a high-quality PDF file (300 DPI). Filename is auto-generated based on parameters (e.g., `rankings_m3_layout_horizontal.pdf`)
 - `--layout` (str): Plot layout style - `horizontal`, `vertical`, `matrix`, or `auto` (default: `auto`)
 
 ### Command: `honest-reports`
@@ -82,6 +83,9 @@ uv run python cli.py honest-reports --m 3 --baselines "0*5,3*5,4*5" --alphabetic
 
 # Display results with a visual heatmap
 uv run python cli.py honest-reports --m 3 --baselines "0*5,3*5,4*5" --plot
+
+# Save plot as PDF (can be used with or without --plot)
+uv run python cli.py honest-reports --m 3 --baselines "0*5,3*5,4*5" --save
 ```
 
 #### Baseline Syntax
@@ -103,6 +107,7 @@ Baseline indices refer to positions in the sorted list of all possible rankings 
 - `--baselines` (str): Baseline permutation indices in comma-separated or repetition syntax
 - `--alphabetical` (flag): Output rankings in alphabetical format instead of integer tuples
 - `--plot` (flag): Display a visual heatmap of voter strategies
+- `--save` (flag): Export the plot as a high-quality PDF file (300 DPI). Filename is auto-generated based on parameters (e.g., `honest_reports_m3_n15_seed42.pdf`)
 
 ### Command: `strategic-reports`
 
@@ -128,6 +133,9 @@ uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --alphabetical
 
 # Display trajectory visualization over T iterations
 uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --plot
+
+# Save plot as PDF (can be used with or without --plot)
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --save
 
 # GTStrategy with high anchor strength (strong anchoring to baseline)
 uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --anchor-strength 0.9 --plot
@@ -195,6 +203,7 @@ The similarity threshold is calculated as `max_distance = (1 - anchor) * max_pos
 - `--distance-metric` (str): Distance metric for SimilarityStrategy. Available: `spearman` (default), `kendall_tau`. Only used when `--strategy=similarity_strategy`
 - `--alphabetical` (flag): Output rankings in alphabetical format instead of integer tuples
 - `--plot` (flag): Display a visual heatmap showing voter strategy evolution over T+1 time steps (including initial honest reports)
+- `--save` (flag): Export the plot as a high-quality PDF file (300 DPI). Filename is auto-generated based on parameters (e.g., `strategic_reports_m3_T9_lr0.4_sh0.3_as0.2_gt_strategy.pdf`)
 
 ### Command: `proportions`
 
@@ -229,6 +238,9 @@ uv run python cli.py proportions --m 3 --n 6 --T 5 --title "Election Evolution"
 
 # Show integer labels instead of alphabetical
 uv run python cli.py proportions --m 3 --n 6 --seed 42 --show-integers
+
+# Save plot as PDF (can be used with or without --plot)
+uv run python cli.py proportions --m 3 --baselines "0*2,3*2,4*2" --T 9 --plot --learning-rate 0.4 --sharpness 0.3 --anchor-strength 0.2 --save
 ```
 
 #### Modes
@@ -282,6 +294,8 @@ The `--mechanism` parameter selects how to aggregate rankings into probabilities
 - `--mechanism` (str): Aggregation mechanism for converting rankings to probabilities (default: `pairwise_majority`). Available: `GT`, `pairwise_majority`, `plurality`
 - `--title` (str): Custom title for the plot
 - `--show-integers` (flag): Show candidate integers instead of alphabetical labels in legend
+- `--plot` (flag): Display a visual proportion plot (stacked area chart)
+- `--save` (flag): Export the plot as a high-quality PDF file (300 DPI). Filename is auto-generated based on parameters (e.g., `proportions_m3_T9_lr0.4_sh0.3_as0.2_GT.pdf` for strategic reports mode, or `proportions_m3_GT.pdf` for single election mode)
 
 ## Examples
 
@@ -317,6 +331,14 @@ uv run python cli.py rankings --m 3 --plot --layout horizontal
 
 This displays a colorful heatmap showing all possible rankings for 3 candidates.
 
+### Example 3b: Save Rankings Plot as PDF
+
+```bash
+uv run python cli.py rankings --m 3 --save --layout horizontal
+```
+
+This generates and saves the rankings plot as a high-quality PDF file (e.g., `rankings_m3_layout_horizontal.pdf`).
+
 ### Example 4: Generate and Visualize Honest Reports
 
 ```bash
@@ -325,6 +347,14 @@ uv run python cli.py honest-reports --n 10 --m 3 --seed 42 --plot
 
 This generates 10 random honest reports and displays them as a heatmap.
 
+### Example 4b: Save Honest Reports Plot as PDF
+
+```bash
+uv run python cli.py honest-reports --n 10 --m 3 --seed 42 --save
+```
+
+This generates honest reports and saves the plot as a PDF file (e.g., `honest_reports_m3_n10_seed42.pdf`).
+
 ### Example 5: Simulate Strategic Voting Evolution with GTStrategy
 
 ```bash
@@ -332,6 +362,14 @@ uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --plot
 ```
 
 This simulates how 6 voters' reports evolve over 5 iterations using GTStrategy (default), showing the trajectory in a heatmap where each column represents a time step.
+
+### Example 5b: Save Strategic Reports Plot as PDF
+
+```bash
+uv run python cli.py strategic-reports --m 3 --baselines "0*2,3*2,4*2" --T 9 --plot --learning-rate 0.4 --sharpness 0.3 --anchor-strength 0.2 --save
+```
+
+This generates strategic reports and saves the plot as a PDF file (e.g., `strategic_reports_m3_T9_lr0.4_sh0.3_as0.2_gt_strategy.pdf`).
 
 ### Example 6: GTStrategy with Custom Parameters
 
@@ -372,6 +410,14 @@ uv run python cli.py proportions --m 3 --n 6 --seed 42 --plot
 ```
 
 This generates 6 voters' rankings and displays a proportion plot showing the probability distribution over the 3 candidates using Pairwise Majority Rule (default mechanism for `proportions` command).
+
+### Example 9b: Save Proportions Plot as PDF
+
+```bash
+uv run python cli.py proportions --m 3 --baselines "0*2,3*2,4*2" --T 9 --plot --learning-rate 0.4 --sharpness 0.3 --anchor-strength 0.2 --save
+```
+
+This generates strategic reports and saves the proportion plot as a PDF file (e.g., `proportions_m3_T9_lr0.4_sh0.3_as0.2_GT.pdf`).
 
 ### Example 10: Visualize Probability Evolution Over Time
 

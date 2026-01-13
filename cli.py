@@ -47,6 +47,11 @@ def main():
         help="Display a visual plot of all rankings (in addition to terminal output)"
     )
     rankings_parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Export the plot as a high-quality PDF file"
+    )
+    rankings_parser.add_argument(
         "--layout",
         type=str,
         choices=['horizontal', 'vertical', 'matrix', 'auto'],
@@ -97,6 +102,11 @@ def main():
         "--plot",
         action="store_true",
         help="Display a visual heatmap of voter strategies (in addition to terminal output)"
+    )
+    honest_reports_parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Export the plot as a high-quality PDF file"
     )
     
     # Strategic reports subcommand
@@ -208,6 +218,11 @@ def main():
         "--plot",
         action="store_true",
         help="Display a visual heatmap of voter strategy evolution over T iterations"
+    )
+    strategic_reports_parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Export the plot as a high-quality PDF file"
     )
     
     # Proportions subcommand
@@ -340,6 +355,11 @@ def main():
         action="store_true",
         help="Display a visual proportion plot (stacked area chart)"
     )
+    proportions_parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Export the plot as a high-quality PDF file"
+    )
     
     args = parser.parse_args()
     
@@ -369,6 +389,8 @@ def main():
             rankings_args.append('--alphabetical')
         if args.plot:
             rankings_args.append('--plot')
+        if args.save:
+            rankings_args.append('--save')
         if args.layout != 'auto':
             rankings_args.extend(['--layout', args.layout])
         rankings_main(rankings_args)
@@ -385,6 +407,8 @@ def main():
             honest_reports_args.append('--alphabetical')
         if args.plot:
             honest_reports_args.append('--plot')
+        if args.save:
+            honest_reports_args.append('--save')
         honest_reports_main(honest_reports_args)
     elif args.command == 'strategic-reports':
         # Build argument list for strategic reports CLI
@@ -405,6 +429,8 @@ def main():
             strategic_reports_args.append('--alphabetical')
         if args.plot:
             strategic_reports_args.append('--plot')
+        if args.save:
+            strategic_reports_args.append('--save')
         strategic_reports_main(strategic_reports_args)
     elif args.command == 'proportions':
         # Build argument list for proportions CLI
@@ -429,6 +455,8 @@ def main():
             proportions_args.append('--show-integers')
         if args.plot:
             proportions_args.append('--plot')
+        if args.save:
+            proportions_args.append('--save')
         proportions_main(proportions_args)
 
 
