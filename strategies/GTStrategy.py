@@ -6,7 +6,7 @@ from strategies.BaseStrategy import BaseStrategy
 from core.aggregator_core import aggregate_rankings
 from core.rankings_core import generate_rankings
 from core.utils import spawn_rng
-from core.graph_utils import compute_degrees
+from core.graph_utils import compute_degrees, compute_and_store_payoffs
 
 
 class GTStrategy(BaseStrategy):
@@ -169,6 +169,9 @@ class GTStrategy(BaseStrategy):
         p_avg_history = []
         p_sum = np.zeros(m, dtype=float)  # Accumulator for time-averaging
         
+        # Track payoffs history: payoffs_history[t-1] = payoffs dict at time t (for t=1..T)
+        payoffs_history = []
+        
         # Compute per-voter degrees from graph (complete graph default if graph is None)
         deg = compute_degrees(graph, n)
         
@@ -199,6 +202,23 @@ class GTStrategy(BaseStrategy):
             # Compute p_tilde (centered around uniform distribution)
             p_tilde = p_t - (1.0 / m)
             
+            # Compute and store Layer 1 payoffs for this time step
+            # Get current rankings (either sampled or most likely)
+            if self.use_expected_score:
+                # For expected-score variant, use most likely rankings
+                most_likely_indices = np.argmax(x, axis=1)
+                current_rankings_for_payoffs = [all_rankings[idx] for idx in most_likely_indices]
+            else:
+                # For sampled variant, use the sampled rankings
+                current_rankings_for_payoffs = current_rankings
+            
+            # Compute payoffs and store on graph edges
+            # Note: graph may be None (complete graph), function handles this
+            payoffs_dict = compute_and_store_payoffs(
+                graph, p_tilde, current_rankings_for_payoffs, m, all_rankings
+            )
+            payoffs_history.append(payoffs_dict.copy())
+            
             # Update strategy distribution
             x = self._update_strategy_distribution(
                 x, p_tilde, baselines, rank_vectors, deg, graph=graph
@@ -216,6 +236,7 @@ class GTStrategy(BaseStrategy):
             "selected_probs": selected_probs,
             "p_history": np.array(p_history),  # Shape [T, m]
             "p_avg_history": np.array(p_avg_history),  # Shape [T, m]
+            "payoffs_history": payoffs_history,  # List of T dicts, each mapping (u, v) -> payoff
         }
     
     def _compute_rank_vectors(self, m, all_rankings):

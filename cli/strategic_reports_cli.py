@@ -6,6 +6,7 @@ from core.strategic_reports import generate_strategic_reports
 from core.graph_utils import parse_edge_list
 from plots.plot_voter_strategies import plot_voter_strategies
 import matplotlib.pyplot as plt
+import igraph
 
 
 def generate_pdf_filename(args):
@@ -187,6 +188,22 @@ Examples:
              "If not provided, uses complete graph (default: all voters connected to all others). "
              "Only used when --strategy=gt_strategy."
     )
+    parser.add_argument(
+        "--show-payoffs",
+        action="store_true",
+        help="Display Layer 1 payoff analysis (S^uv = <p_tilde, r_v - r_u>) for each edge. "
+             "Shows detailed breakdown per edge including rankings, rank vectors, and payoffs. "
+             "Only available when --strategy=gt_strategy."
+    )
+    parser.add_argument(
+        "--payoff-time",
+        type=str,
+        default="all",
+        help="Time step(s) to show payoffs for when --show-payoffs is set. "
+             "Options: 'all' (show all time steps), 'last' (show only last time step), "
+             "or a comma-separated list of time step indices (e.g., '1,2,5'). "
+             "Time steps are 1-indexed (t=1..T). Default: 'all'"
+    )
     
     args = parser.parse_args(args)
     
@@ -309,6 +326,118 @@ Examples:
                 ranking_idx = strategies[i, t]
                 ranking = all_rankings[ranking_idx]
                 print(f"  t={t}: {ranking}")
+    
+    # Display Layer 1 payoff analysis if requested
+    if args.show_payoffs:
+        if args.strategy != "gt_strategy":
+            parser.error("--show-payoffs is only available when --strategy=gt_strategy")
+        
+        # Get payoffs history and p_history from results
+        payoffs_history = results.get("payoffs_history")
+        p_history = results.get("p_history")
+        
+        if payoffs_history is None:
+            print("\nWarning: Payoffs history not available. Payoff analysis requires GTStrategy.")
+        else:
+            # Parse payoff_time argument
+            if args.payoff_time == "all":
+                # Show all time steps (t=1 to t=T, which is indices 0 to T-1 in payoffs_history)
+                time_steps_to_show = list(range(len(payoffs_history)))
+            elif args.payoff_time == "last":
+                # Show only last time step
+                if len(payoffs_history) > 0:
+                    time_steps_to_show = [len(payoffs_history) - 1]
+                else:
+                    time_steps_to_show = []
+            else:
+                # Parse comma-separated list of time step indices (1-indexed)
+                try:
+                    time_steps_to_show = [int(x.strip()) - 1 for x in args.payoff_time.split(',')]
+                    # Validate: time steps should be in range [0, len(payoffs_history)-1]
+                    # But user provides 1-indexed, so we subtract 1
+                    for t_idx in time_steps_to_show:
+                        if t_idx < 0 or t_idx >= len(payoffs_history):
+                            parser.error(
+                                f"Invalid time step in --payoff-time: {t_idx + 1}. "
+                                f"Valid range is 1 to {len(payoffs_history)}"
+                            )
+                except ValueError as e:
+                    parser.error(f"Invalid --payoff-time format: {args.payoff_time}. {e}")
+            
+            # Get or create graph for edge iteration
+            if graph is None:
+                # Complete graph: create temporary graph for edge iteration
+                display_graph = igraph.Graph.Full(n, directed=False)
+            else:
+                display_graph = graph
+            
+            # Display payoffs for each requested time step
+            for t_idx in time_steps_to_show:
+                # t_idx is 0-indexed in payoffs_history (corresponds to time step t = t_idx + 1)
+                # payoffs_history[t_idx] was computed at time step t = t_idx + 1 during generation
+                t = t_idx + 1
+                payoffs_dict = payoffs_history[t_idx]
+                
+                # Get p_tilde for this time step
+                if p_history is not None and t_idx < len(p_history):
+                    p_t = p_history[t_idx]
+                    p_tilde = p_t - (1.0 / args.m)
+                else:
+                    # Fallback: compute from current rankings
+                    p_tilde = None
+                
+                print(f"\n--- Layer 1 Analysis (Time Step t={t}) ---")
+                if p_tilde is not None:
+                    print(f"Centered Outcome (p_tilde): {np.round(p_tilde, 4)}")
+                
+                # Get current rankings for this time step
+                # payoffs_history[t_idx] corresponds to time step t = t_idx + 1
+                # strategies[:, t_idx + 1] contains rankings at time step t = t_idx + 1
+                # But we need to check bounds since strategies might be sliced
+                if t < strategies.shape[1]:
+                    current_rankings = [all_rankings[strategies[i, t]] for i in range(n)]
+                else:
+                    # Fallback: use last available time step
+                    last_t = strategies.shape[1] - 1
+                    current_rankings = [all_rankings[strategies[i, last_t]] for i in range(n)]
+                    print(f"  (Note: Using rankings from t={last_t} as t={t} is not available)")
+                
+                # Create mapping from ranking to rank vector (1-based indexing)
+                ranking_to_rank_vector = {}
+                for ranking in all_rankings:
+                    rank_vector = np.zeros(args.m)
+                    for rank_pos, candidate in enumerate(ranking):
+                        rank_vector[candidate] = rank_pos + 1  # 1-based indexing
+                    ranking_to_rank_vector[ranking] = rank_vector
+                
+                # Display payoffs for each edge
+                # Sort edges for consistent output
+                edges_list = sorted(payoffs_dict.keys())
+                
+                for (u, v) in edges_list:
+                    payoff = payoffs_dict[(u, v)]
+                    
+                    # Get rankings and rank vectors
+                    ranking_u = current_rankings[u]
+                    ranking_v = current_rankings[v]
+                    r_u = ranking_to_rank_vector[ranking_u]
+                    r_v = ranking_to_rank_vector[ranking_v]
+                    diff_vu = r_v - r_u
+                    
+                    # Format rankings for display
+                    if args.alphabetical:
+                        labels = candidate_labels(args.m)
+                        ranking_u_str = ">".join(labels[c] for c in ranking_u)
+                        ranking_v_str = ">".join(labels[c] for c in ranking_v)
+                    else:
+                        ranking_u_str = str(ranking_u)
+                        ranking_v_str = str(ranking_v)
+                    
+                    print(f"\nEdge ({u}, {v}):")
+                    print(f"  Ranking {u}: {ranking_u_str} -> r={r_u}")
+                    print(f"  Ranking {v}: {ranking_v_str} -> r={r_v}")
+                    print(f"  Diff (r_{v} - r_{u}): {diff_vu}")
+                    print(f"  Payoff S^{u}{v}: {payoff:.4f}")
     
     # Plot if requested
     if args.plot or args.save:

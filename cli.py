@@ -5,6 +5,9 @@ from cli.rankings_cli import main as rankings_main
 from cli.honest_reports_cli import main as honest_reports_main
 from cli.strategic_reports_cli import main as strategic_reports_main
 from cli.proportions_cli import main as proportions_main
+from cli.ternary_cli import main as ternary_main
+from cli.phase_transition_cli import main as phase_transition_main
+from cli.dashboard_cli import main as dashboard_main
 from mechanisms import list_mechanisms
 
 
@@ -377,6 +380,304 @@ def main():
              "Creates two subplots: left shows instantaneous p^t, right shows time-averaged \\hat{p}^t."
     )
     
+    # Ternary subcommand
+    ternary_parser = subparsers.add_parser(
+        'ternary',
+        help='Visualize ternary trajectory plots before and after phase transition',
+        description='Visualize ternary trajectory plots comparing voting dynamics before and after phase transition threshold'
+    )
+    ternary_parser.add_argument(
+        "--n",
+        type=int,
+        default=None,
+        help="Number of voters (default: 15, or inferred from --baselines if provided)"
+    )
+    ternary_parser.add_argument(
+        "--m",
+        type=int,
+        default=3,
+        help="Number of candidates (default: 3, must be 3 for ternary plots)"
+    )
+    ternary_parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Random seed for reproducibility (default: 0, used when --baselines not provided)"
+    )
+    ternary_parser.add_argument(
+        "--baselines",
+        type=str,
+        default=None,
+        help="Baseline permutation indices. Supports two formats:\n"
+             "  - Old: comma-separated indices (e.g., '0,1,2,0,1,2')\n"
+             "  - New: repetition syntax (e.g., '0*5,3*5,4*5' for 5 voters each)\n"
+             "Indices refer to positions in the sorted list from generate_rankings(m).\n"
+             "If provided, n will be inferred from the total count. If not provided, baselines are sampled uniformly."
+    )
+    ternary_parser.add_argument(
+        "--T",
+        type=int,
+        default=300,
+        help="Total number of time steps (default: 300)"
+    )
+    ternary_parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=0.2,
+        dest="learning_rate",
+        help="Learning rate (0-1) for GTStrategy. Accepts --eta as alias. "
+             "Controls update speed (default: 0.2)"
+    )
+    ternary_parser.add_argument(
+        "--eta",
+        type=float,
+        default=None,
+        dest="learning_rate",
+        help="Alias for --learning-rate (deprecated, use --learning-rate instead)"
+    )
+    ternary_parser.add_argument(
+        "--sharpness",
+        type=float,
+        default=3.0,
+        dest="sharpness",
+        help="Sharpness parameter (>0) for GTStrategy. Accepts --beta as alias. "
+             "Controls exploration vs exploitation (default: 3.0)"
+    )
+    ternary_parser.add_argument(
+        "--beta",
+        type=float,
+        default=None,
+        dest="sharpness",
+        help="Alias for --sharpness (deprecated, use --sharpness instead)"
+    )
+    ternary_parser.add_argument(
+        "--anchor-strength",
+        type=float,
+        default=None,
+        dest="anchor_strength",
+        help="Anchoring strength parameter (0-1) for a single ternary plot. "
+             "Accepts --alpha as alias. Use with --alpha-before and --alpha-after for two plots."
+    )
+    ternary_parser.add_argument(
+        "--alpha",
+        type=float,
+        default=None,
+        dest="anchor_strength",
+        help="Alias for --anchor-strength (deprecated, use --anchor-strength instead)"
+    )
+    ternary_parser.add_argument(
+        "--alpha-before",
+        type=float,
+        default=None,
+        dest="alpha_before",
+        help="Alpha value for 'before threshold' plot (0-1). Requires --alpha-after for two plots."
+    )
+    ternary_parser.add_argument(
+        "--alpha-after",
+        type=float,
+        default=None,
+        dest="alpha_after",
+        help="Alpha value for 'after threshold' plot (0-1). Requires --alpha-before for two plots."
+    )
+    ternary_parser.add_argument(
+        "--title",
+        type=str,
+        default=None,
+        help="Custom title for the plot"
+    )
+    ternary_parser.add_argument(
+        "--plot",
+        action="store_true",
+        help="Display a visual ternary trajectory plot"
+    )
+    ternary_parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Export the plot as a high-quality PDF file"
+    )
+    
+    # Phase transition subcommand
+    phase_transition_parser = subparsers.add_parser(
+        'phase-transition',
+        help='Visualize phase transition: distance from center vs anchoring parameter',
+        description='Visualize phase transition experiment showing distance from center (tie) vs anchoring parameter (α)'
+    )
+    phase_transition_parser.add_argument(
+        "--n",
+        type=int,
+        default=None,
+        help="Number of voters (default: 15, or inferred from --baselines if provided)"
+    )
+    phase_transition_parser.add_argument(
+        "--m",
+        type=int,
+        default=3,
+        help="Number of candidates (default: 3)"
+    )
+    phase_transition_parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Random seed for reproducibility (default: 0, used when --baselines not provided)"
+    )
+    phase_transition_parser.add_argument(
+        "--baselines",
+        type=str,
+        default=None,
+        help="Baseline permutation indices. Supports two formats:\n"
+             "  - Old: comma-separated indices (e.g., '0,1,2,0,1,2')\n"
+             "  - New: repetition syntax (e.g., '0*5,3*5,4*5' for 5 voters each)\n"
+             "Indices refer to positions in the sorted list from generate_rankings(m).\n"
+             "If provided, n will be inferred from the total count. If not provided, baselines are sampled uniformly."
+    )
+    phase_transition_parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=0.2,
+        dest="learning_rate",
+        help="Learning rate (0-1) for GTStrategy. Accepts --eta as alias. "
+             "Controls update speed (default: 0.2)"
+    )
+    phase_transition_parser.add_argument(
+        "--eta",
+        type=float,
+        default=None,
+        dest="learning_rate",
+        help="Alias for --learning-rate (deprecated, use --learning-rate instead)"
+    )
+    phase_transition_parser.add_argument(
+        "--sharpness",
+        type=float,
+        default=3.0,
+        dest="sharpness",
+        help="Sharpness parameter (>0) for GTStrategy. Accepts --beta as alias. "
+             "Controls exploration vs exploitation (default: 3.0)"
+    )
+    phase_transition_parser.add_argument(
+        "--beta",
+        type=float,
+        default=None,
+        dest="sharpness",
+        help="Alias for --sharpness (deprecated, use --sharpness instead)"
+    )
+    phase_transition_parser.add_argument(
+        "--burn-in",
+        type=int,
+        default=200,
+        dest="burn_in",
+        help="Number of burn-in steps before collection (default: 200)"
+    )
+    phase_transition_parser.add_argument(
+        "--collection-steps",
+        type=int,
+        default=50,
+        dest="collection_steps",
+        help="Number of steps to collect and average (default: 50)"
+    )
+    phase_transition_parser.add_argument(
+        "--runs",
+        type=int,
+        default=10,
+        help="Number of independent runs per alpha value (default: 10)"
+    )
+    phase_transition_parser.add_argument(
+        "--title",
+        type=str,
+        default=None,
+        help="Custom title for the plot"
+    )
+    phase_transition_parser.add_argument(
+        "--plot",
+        action="store_true",
+        help="Display a visual phase transition plot"
+    )
+    phase_transition_parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Export the plot as a high-quality PDF file"
+    )
+    
+    # Dashboard subcommand
+    dashboard_parser = subparsers.add_parser(
+        'dashboard',
+        help='Combined dashboard view with phase transition, strategy heatmap, ternary plots, and text explanation',
+        description='Combined dashboard view with phase transition, strategy heatmap, ternary plots, and text explanation'
+    )
+    dashboard_parser.add_argument(
+        "--n",
+        type=int,
+        default=None,
+        help="Number of voters (default: 15, or inferred from --baselines if provided)"
+    )
+    dashboard_parser.add_argument(
+        "--m",
+        type=int,
+        default=3,
+        help="Number of candidates (default: 3, must be 3 for ternary plots)"
+    )
+    dashboard_parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Random seed for reproducibility (default: 0, used when --baselines not provided)"
+    )
+    dashboard_parser.add_argument(
+        "--baselines",
+        type=str,
+        default=None,
+        help="Baseline permutation indices. Supports two formats:\n"
+             "  - Old: comma-separated indices (e.g., '0,1,2,0,1,2')\n"
+             "  - New: repetition syntax (e.g., '0*5,3*5,4*5' for 5 voters each)\n"
+             "Indices refer to positions in the sorted list from generate_rankings(m).\n"
+             "If provided, n will be inferred from the total count. If not provided, baselines are sampled uniformly."
+    )
+    dashboard_parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=0.2,
+        dest="learning_rate",
+        help="Learning rate (0-1) for GTStrategy. Accepts --eta as alias. "
+             "Controls update speed (default: 0.2)"
+    )
+    dashboard_parser.add_argument(
+        "--eta",
+        type=float,
+        default=None,
+        dest="learning_rate",
+        help="Alias for --learning-rate (deprecated, use --learning-rate instead)"
+    )
+    dashboard_parser.add_argument(
+        "--sharpness",
+        type=float,
+        default=3.0,
+        dest="sharpness",
+        help="Sharpness parameter (>0) for GTStrategy. Accepts --beta as alias. "
+             "Controls exploration vs exploitation (default: 3.0)"
+    )
+    dashboard_parser.add_argument(
+        "--beta",
+        type=float,
+        default=None,
+        dest="sharpness",
+        help="Alias for --sharpness (deprecated, use --sharpness instead)"
+    )
+    dashboard_parser.add_argument(
+        "--T",
+        type=int,
+        default=300,
+        help="Total number of time steps for heatmap/ternary (default: 300)"
+    )
+    dashboard_parser.add_argument(
+        "--plot",
+        action="store_true",
+        help="Display a visual dashboard plot"
+    )
+    dashboard_parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Export the plot as a high-quality PDF file"
+    )
+    
     args = parser.parse_args()
     
     # Handle default values based on strategy
@@ -395,6 +696,21 @@ def main():
                 args.learning_rate = 0.2
             if args.sharpness is None:
                 args.sharpness = 3.0
+    elif args.command == 'ternary':
+        if args.learning_rate is None:
+            args.learning_rate = 0.2
+        if args.sharpness is None:
+            args.sharpness = 3.0
+    elif args.command == 'phase-transition':
+        if args.learning_rate is None:
+            args.learning_rate = 0.2
+        if args.sharpness is None:
+            args.sharpness = 3.0
+    elif args.command == 'dashboard':
+        if args.learning_rate is None:
+            args.learning_rate = 0.2
+        if args.sharpness is None:
+            args.sharpness = 3.0
     
     if args.command == 'rankings':
         # Build argument list for rankings CLI
@@ -480,6 +796,72 @@ def main():
         if hasattr(args, 'show_both') and args.show_both:
             proportions_args.append('--show-both')
         proportions_main(proportions_args)
+    elif args.command == 'ternary':
+        # Build argument list for ternary CLI
+        ternary_args = []
+        if args.n is not None:
+            ternary_args.extend(['--n', str(args.n)])
+        ternary_args.extend(['--m', str(args.m)])
+        ternary_args.extend(['--seed', str(args.seed)])
+        if args.baselines is not None:
+            ternary_args.extend(['--baselines', args.baselines])
+        ternary_args.extend(['--T', str(args.T)])
+        ternary_args.extend(['--learning-rate', str(args.learning_rate)])
+        ternary_args.extend(['--sharpness', str(args.sharpness)])
+        if hasattr(args, 'anchor_strength') and args.anchor_strength is not None:
+            ternary_args.extend(['--anchor-strength', str(args.anchor_strength)])
+        if hasattr(args, 'alpha_before') and args.alpha_before is not None:
+            ternary_args.extend(['--alpha-before', str(args.alpha_before)])
+        if hasattr(args, 'alpha_after') and args.alpha_after is not None:
+            ternary_args.extend(['--alpha-after', str(args.alpha_after)])
+        if args.title is not None:
+            ternary_args.extend(['--title', args.title])
+        if args.plot:
+            ternary_args.append('--plot')
+        if args.save:
+            ternary_args.append('--save')
+        ternary_main(ternary_args)
+    elif args.command == 'phase-transition':
+        # Build argument list for phase transition CLI
+        phase_transition_args = []
+        if args.n is not None:
+            phase_transition_args.extend(['--n', str(args.n)])
+        phase_transition_args.extend(['--m', str(args.m)])
+        phase_transition_args.extend(['--seed', str(args.seed)])
+        if args.baselines is not None:
+            phase_transition_args.extend(['--baselines', args.baselines])
+        phase_transition_args.extend(['--learning-rate', str(args.learning_rate)])
+        phase_transition_args.extend(['--sharpness', str(args.sharpness)])
+        if hasattr(args, 'burn_in'):
+            phase_transition_args.extend(['--burn-in', str(args.burn_in)])
+        if hasattr(args, 'collection_steps'):
+            phase_transition_args.extend(['--collection-steps', str(args.collection_steps)])
+        if hasattr(args, 'runs'):
+            phase_transition_args.extend(['--runs', str(args.runs)])
+        if args.title is not None:
+            phase_transition_args.extend(['--title', args.title])
+        if args.plot:
+            phase_transition_args.append('--plot')
+        if args.save:
+            phase_transition_args.append('--save')
+        phase_transition_main(phase_transition_args)
+    elif args.command == 'dashboard':
+        # Build argument list for dashboard CLI
+        dashboard_args = []
+        if args.n is not None:
+            dashboard_args.extend(['--n', str(args.n)])
+        dashboard_args.extend(['--m', str(args.m)])
+        dashboard_args.extend(['--seed', str(args.seed)])
+        if args.baselines is not None:
+            dashboard_args.extend(['--baselines', args.baselines])
+        dashboard_args.extend(['--learning-rate', str(args.learning_rate)])
+        dashboard_args.extend(['--sharpness', str(args.sharpness)])
+        dashboard_args.extend(['--T', str(args.T)])
+        if args.plot:
+            dashboard_args.append('--plot')
+        if args.save:
+            dashboard_args.append('--save')
+        dashboard_main(dashboard_args)
 
 
 if __name__ == "__main__":

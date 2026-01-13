@@ -99,3 +99,85 @@ def compute_degrees(graph, n):
         )
     
     return degrees
+
+
+def compute_and_store_payoffs(graph, p_tilde, current_rankings, m, all_rankings):
+    """
+    Compute Layer 1 pairwise payoffs S^uv = <p_tilde, r_v - r_u> for each edge.
+    
+    Computes payoffs for each edge (u, v) in the graph based on the centered outcome
+    p_tilde and current voter rankings. Stores payoffs as edge attribute "payoff" on
+    the graph object and returns a dict mapping (u, v) -> payoff value.
+    
+    Args:
+        graph: igraph.Graph object, or None for complete graph. If None, creates
+               a temporary complete graph for storage.
+        p_tilde: Centered outcome vector, shape [m]. p_tilde = p - (1/m).
+        current_rankings: List of n ranking tuples, one per voter. Each tuple
+                          represents the ranking that voter is currently using.
+        m: Number of candidates
+        all_rankings: List of all possible ranking tuples (for converting ranking
+                     indices to rank vectors)
+    
+    Returns:
+        dict mapping (u, v) -> payoff value, where (u, v) is an edge tuple.
+        Also stores payoffs on graph.es["payoff"] if graph is provided.
+    
+    Note:
+        Rank vectors use 1-based indexing (rank 1 = top preference) to match
+        the mathematical notation in the paper. The payoff formula is:
+        S^uv = <p_tilde, r_v - r_u>
+    """
+    n = len(current_rankings)
+    
+    # Handle complete graph case (graph is None)
+    if graph is None:
+        # Create temporary complete graph for storage
+        graph = igraph.Graph.Full(n, directed=False)
+    
+    # Create mapping from ranking tuple to rank vector
+    # Rank vectors use 1-based indexing: rank 1 = top preference
+    ranking_to_rank_vector = {}
+    for ranking in all_rankings:
+        rank_vector = np.zeros(m)
+        for rank_pos, candidate in enumerate(ranking):
+            # rank_pos is 0-indexed in Python, but we use 1-based for math
+            rank_vector[candidate] = rank_pos + 1
+        ranking_to_rank_vector[ranking] = rank_vector
+    
+    # Compute rank vectors for current rankings
+    rank_vectors = []
+    for ranking in current_rankings:
+        rank_vectors.append(ranking_to_rank_vector[ranking])
+    rank_vectors = np.array(rank_vectors)  # Shape: [n, m]
+    
+    # Compute payoffs for each edge
+    payoffs_dict = {}
+    payoff_values = []
+    
+    # Iterate over all edges in the graph
+    for edge in graph.es:
+        u = edge.source
+        v = edge.target
+        
+        # Get rank vectors for voters u and v
+        r_u = rank_vectors[u]
+        r_v = rank_vectors[v]
+        
+        # Difference vector: r_v - r_u
+        diff_vu = r_v - r_u
+        
+        # Calculate payoff: S^uv = <p_tilde, r_v - r_u>
+        payoff = np.dot(p_tilde, diff_vu)
+        
+        # Store in dict (normalize to (min, max) for consistency)
+        edge_key = (min(u, v), max(u, v))
+        payoffs_dict[edge_key] = payoff
+        
+        # Store in list for graph edge attribute
+        payoff_values.append(payoff)
+    
+    # Store payoffs as edge attribute on graph
+    graph.es["payoff"] = payoff_values
+    
+    return payoffs_dict

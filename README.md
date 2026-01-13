@@ -12,7 +12,7 @@ uv pip install -e '.[dev]'
 
 ## CLI Usage
 
-The project provides a unified CLI interface through `cli.py` with four main subcommands: `rankings`, `honest-reports`, `strategic-reports`, and `proportions`.
+The project provides a unified CLI interface through `cli.py` with five main subcommands: `rankings`, `honest-reports`, `strategic-reports`, `proportions`, and `ternary`.
 
 ### Basic Usage
 
@@ -25,6 +25,7 @@ uv run python -m cli.rankings_cli [options]
 uv run python -m cli.honest_reports_cli [options]
 uv run python -m cli.strategic_reports_cli [options]
 uv run python -m cli.proportions_cli [options]
+uv run python -m cli.ternary_cli [options]
 ```
 
 ### Command: `rankings`
@@ -145,6 +146,18 @@ uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --anchor-strength 0.1 
 
 # GTStrategy with expected-score variant (deterministic dynamics)
 uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --use-expected-score --plot
+
+# Display Layer 1 payoff analysis for all time steps
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --show-payoffs
+
+# Display payoffs only for the last time step
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --show-payoffs --payoff-time last
+
+# Display payoffs for specific time steps (1-indexed: t=1, t=2, t=5)
+uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --show-payoffs --payoff-time "1,2,5"
+
+# With custom graph topology and payoff analysis
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --graph "0-1,1-2,2-3,3-4,4-5" --show-payoffs
 ```
 
 #### Strategies
@@ -168,6 +181,12 @@ Implements iterative game theory dynamics where voters strategically update thei
 - `--use-expected-score` (flag, default: False): Use expected-score variant where realized neighbor rankings are replaced by their mixed strategies, yielding deterministic dynamics.
   - **False (default)**: Sampled variant - rankings are sampled from probability distributions at each time step, introducing stochasticity. The same seed may produce different trajectories due to randomness in sampling.
   - **True**: Expected-score variant - uses expected margin matrix computed from mixed strategies, resulting in deterministic dynamics. The same seed always produces the same trajectory. This variant replaces realized neighbor rankings π_j^t with their mixed strategies x_j^{t-1} and computes scores as: s̄_i(π) = Σ_{j:{i,j}∈E} <p̃, E_r_j - r_π> where E_r_j = Σ_σ x_j[σ] * r_σ is the expected rank vector of neighbor j. This yields a deterministic update map on the strategy space X, making the dynamics smoother and easier to analyze.
+- `--graph` (str, optional): Edge list defining social network graph. Format: `'0-1,1-2,2-0'` (dash-separated pairs, comma-separated edges). If not provided, uses complete graph (default: all voters connected to all others). Only used when `--strategy=gt_strategy`.
+- `--show-payoffs` (flag, default: False): Display Layer 1 payoff analysis (S^uv = <p_tilde, r_v - r_u>) for each edge in the graph. Shows detailed breakdown per edge including rankings, rank vectors, differences, and payoff values. Only available when `--strategy=gt_strategy`. Payoffs are computed once per time step during strategy generation and stored efficiently in the results.
+- `--payoff-time` (str, default: "all"): Time step(s) to show payoffs for when `--show-payoffs` is set. Options:
+  - `"all"` (default): Show payoffs for all time steps (t=1..T)
+  - `"last"`: Show payoffs only for the last time step (t=T)
+  - Comma-separated list: Show payoffs for specific time steps (e.g., `"1,2,5"` for t=1, t=2, t=5). Time steps are 1-indexed (t=1..T).
 
 **How it works:**
 1. At each time step:
@@ -216,6 +235,9 @@ The similarity threshold is calculated as `max_distance = (1 - anchor) * max_pos
 - `--learning-rate` (float): Learning rate for GTStrategy (0-1, default: 0.2). Accepts `--eta` as alias. Only used when `--strategy=gt_strategy`
 - `--sharpness` (float): Sharpness parameter for GTStrategy (>0, default: 3.0). Accepts `--beta` as alias. Only used when `--strategy=gt_strategy`
 - `--use-expected-score` (flag): Use expected-score variant for GTStrategy (deterministic dynamics). Only used when `--strategy=gt_strategy`. Default: False (uses sampled rankings). When enabled, replaces sampled rankings with expected margin matrices computed from mixed strategies, yielding deterministic update dynamics. See Example 14 for usage.
+- `--graph` (str, optional): Edge list defining social network graph. Format: `'0-1,1-2,2-0'` (dash-separated pairs, comma-separated edges). If not provided, uses complete graph (default: all voters connected to all others). Only used when `--strategy=gt_strategy`.
+- `--show-payoffs` (flag): Display Layer 1 payoff analysis (S^uv = <p_tilde, r_v - r_u>) for each edge. Shows detailed breakdown per edge including rankings, rank vectors, differences, and payoffs. Only available when `--strategy=gt_strategy`. See Example 16 for usage.
+- `--payoff-time` (str): Time step(s) to show payoffs for when `--show-payoffs` is set. Options: `"all"` (show all time steps), `"last"` (show only last time step), or comma-separated list of time step indices (e.g., `"1,2,5"`). Time steps are 1-indexed (t=1..T). Default: `"all"`. Only used when `--show-payoffs` is set.
 - `--distance-metric` (str): Distance metric for SimilarityStrategy. Available: `spearman` (default), `kendall_tau`. Only used when `--strategy=similarity_strategy`
 - `--alphabetical` (flag): Output rankings in alphabetical format instead of integer tuples
 - `--plot` (flag): Display a visual heatmap showing voter strategy evolution over T+1 time steps (including initial honest reports)
@@ -324,6 +346,121 @@ The `--mechanism` parameter selects how to aggregate rankings into probabilities
 - `--save` (flag): Export the plot as a high-quality PDF file (300 DPI). Filename is auto-generated based on parameters (e.g., `proportions_m3_T9_lr0.4_sh0.3_as0.2_GT.pdf` for strategic reports mode, or `proportions_m3_GT.pdf` for single election mode)
 - `--time-average` (flag): Plot time-averaged outcomes \hat{p}^t instead of instantaneous outcomes p^t. Only available for strategic reports mode (when `--T` is provided) and when using GTStrategy. Time-averaged outcomes are defined as \hat{p}^t = (1/t) * sum_{tau=1}^t p^tau. This follows the learning-in-games convention where time averages converge even when instantaneous trajectories cycle.
 - `--show-both` (flag): Display both instantaneous and time-averaged outcomes side-by-side. Only available for strategic reports mode (when `--T` is provided) and when using GTStrategy. Creates two subplots: left shows instantaneous p^t, right shows time-averaged \hat{p}^t.
+
+### Command: `ternary`
+
+Visualize ternary trajectory plots comparing voting dynamics before and after the phase transition threshold. This command generates side-by-side ternary plots showing how voting outcomes evolve in the probability simplex for m=3 candidates. It automatically computes the phase transition threshold and compares trajectories before and after this critical point.
+
+#### Basic Examples
+
+```bash
+# Basic ternary plot (default: n=15, m=3, T=300)
+uv run python cli.py ternary --plot
+
+# With custom parameters
+uv run python cli.py ternary --n 15 --m 3 --T 300 --learning-rate 0.2 --sharpness 3.0 --seed 42 --plot
+
+# With baselines
+uv run python cli.py ternary --m 3 --baselines "0*5,3*5,4*5" --T 300 --plot
+
+# Save as PDF
+uv run python cli.py ternary --n 15 --m 3 --T 300 --save
+
+# Custom title
+uv run python cli.py ternary --n 15 --m 3 --T 300 --title "Phase Transition Analysis" --plot
+```
+
+#### How It Works
+
+1. **Phase Transition Detection**: The command runs a phase transition experiment to determine the threshold alpha value where voting dynamics change significantly
+2. **Threshold Computation**: Finds the alpha value at the steepest drop in distance from the center (fair tie)
+3. **Before/After Comparison**: Generates trajectories for:
+   - **Before threshold**: Alpha value just before the phase transition (strategic dynamics push outcome away from tie)
+   - **After threshold**: Alpha value just after the phase transition (anchoring pulls outcome back toward fair tie)
+4. **Visualization**: Creates side-by-side ternary plots showing:
+   - **Instantaneous trajectories** (gray, faint): Individual time steps p^t
+   - **Running average trajectories** (colored gradient): Cumulative average showing overall trend
+   - **Start/end markers**: Red 'x' for start, blue '*' for end of running average
+
+#### Visual Elements
+
+- **Ternary Triangle**: The simplex boundary representing all valid probability distributions for 3 candidates
+- **Candidate Labels**: Positioned at triangle vertices (top, right, left)
+- **Instantaneous Trajectory**: Gray line with low opacity showing individual time steps
+- **Running Average**: Colored gradient (viridis colormap) showing cumulative average over time
+- **Markers**: Start (red 'x') and end (blue '*') of the running average trajectory
+
+#### Options
+
+- `--n` (int): Number of voters (default: 15, or inferred from `--baselines` if provided)
+- `--m` (int): Number of candidates (default: 3, **must be 3** for ternary plots)
+- `--seed` (int): Random seed for reproducibility (default: 0, used when `--baselines` not provided)
+- `--baselines` (str): Baseline permutation indices in comma-separated or repetition syntax (same format as `honest-reports`)
+- `--T` (int): Total number of time steps (default: 300)
+- `--learning-rate` (float): Learning rate for GTStrategy (0-1, default: 0.2). Accepts `--eta` as alias
+- `--sharpness` (float): Sharpness parameter for GTStrategy (>0, default: 3.0). Accepts `--beta` as alias
+- `--title` (str): Custom title for the plot
+- `--plot` (flag): Display a visual ternary trajectory plot
+- `--save` (flag): Export the plot as a high-quality PDF file (300 DPI). Filename is auto-generated based on parameters (e.g., `ternary_m3_n15_T300_lr0.2_sh3.0_seed0.pdf`)
+
+**Note**: Ternary plots require `m=3` (three candidates). The command will raise an error if `m != 3`.
+
+### Command: `phase-transition`
+
+Visualize the phase transition experiment showing how the distance from the center (fair tie) changes as a function of the anchoring parameter α. The plot includes confidence intervals computed from multiple independent runs.
+
+#### Basic Examples
+
+```bash
+# Basic phase transition plot (default: 10 runs per alpha)
+uv run python cli.py phase-transition --m 3 --n 15 --plot
+
+# With custom parameters
+uv run python cli.py phase-transition --m 3 --n 15 --runs 20 --burn-in 300 --collection-steps 100 --plot
+
+# With baselines
+uv run python cli.py phase-transition --m 3 --baselines "0*5,3*5,4*5" --runs 15 --plot
+
+# Save as PDF
+uv run python cli.py phase-transition --m 3 --n 15 --save
+```
+
+#### How It Works
+
+1. **Multiple Runs**: For each alpha value, run `runs` independent simulations
+2. **Burn-in Phase**: Run simulation for `burn-in` steps to reach convergence
+3. **Collection Phase**: Collect `collection-steps` outcomes and average them
+4. **Statistics**: Compute mean and standard deviation across all runs
+5. **Visualization**: Plot mean distance with confidence intervals (error bars and/or shaded region)
+
+#### Methodology
+
+- **Burn-in**: Allows the system to reach steady state before measurement
+- **Collection**: Averages multiple steps after convergence to smooth fluctuations
+- **Multiple Runs**: Provides statistical robustness and confidence intervals
+- **Threshold Detection**: Identifies the alpha value where distance drops sharply
+
+#### Visual Elements
+
+- **Mean Line**: Teal line showing average distance across runs
+- **Confidence Intervals**: Shaded region (mean ± 1 std) and error bars showing statistical variability
+- **Threshold Line**: Dashed gray vertical line marking the phase transition threshold
+- **Warped X-axis**: Nonlinear transform near threshold to highlight the transition region
+
+#### Options
+
+- `--n` (int): Number of voters (default: 15, or inferred from `--baselines` if provided)
+- `--m` (int): Number of candidates (default: 3)
+- `--burn-in` (int): Burn-in steps before collection (default: 200)
+- `--collection-steps` (int): Steps to collect and average (default: 50)
+- `--runs` (int): Number of independent runs per alpha (default: 10)
+- `--learning-rate` (float): Learning rate parameter (default: 0.2)
+- `--sharpness` (float): Sharpness parameter (default: 3.0)
+- `--seed` (int): Random seed (default: 0)
+- `--baselines` (str): Baseline permutation indices in comma-separated or repetition syntax
+- `--title` (str): Custom title for the plot
+- `--plot` (flag): Display the plot
+- `--save` (flag): Export the plot as a high-quality PDF file
 
 ## Examples
 
@@ -514,6 +651,54 @@ This variant is particularly useful for:
 - Producing reproducible, deterministic visualizations
 - Studying the deterministic update map on the strategy space X
 
+### Example 15: Ternary Trajectory Plot (Phase Transition)
+
+```bash
+# Basic ternary plot showing before/after threshold dynamics
+uv run python cli.py ternary --n 15 --m 3 --T 300 --plot
+
+# With custom parameters
+uv run python cli.py ternary --n 15 --m 3 --T 300 --learning-rate 0.2 --sharpness 3.0 --seed 42 --plot
+
+# Save as PDF
+uv run python cli.py ternary --n 15 --m 3 --T 300 --save
+```
+
+This generates side-by-side ternary plots comparing voting dynamics before and after the phase transition threshold. The left plot shows dynamics before the threshold (strategic forces push outcome away from tie), while the right plot shows dynamics after the threshold (anchoring pulls outcome back toward fair tie).
+
+### Example 16: Layer 1 Payoff Analysis
+
+```bash
+# Display payoff analysis for all time steps
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --show-payoffs
+
+# Display payoffs only for the last time step
+uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --show-payoffs --payoff-time last
+
+# Display payoffs for specific time steps
+uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --show-payoffs --payoff-time "1,3,5"
+
+# With custom graph topology
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --graph "0-1,1-2,2-3" --show-payoffs
+
+# With alphabetical output format
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --show-payoffs --alphabetical
+```
+
+The payoff analysis displays Layer 1 pairwise payoffs S^uv = <p_tilde, r_v - r_u> for each edge (u, v) in the graph, where:
+- **p_tilde** = p_t - (1/m) is the centered outcome vector
+- **r_u, r_v** are rank vectors (1-based: rank 1 = top preference) for voters u and v
+- **S^uv** is the payoff for edge (u, v), representing the relative advantage of voter v's ranking over voter u's ranking
+
+The output shows for each edge:
+- Edge identifier (u, v)
+- Rankings for both voters
+- Rank vectors r_u and r_v
+- Difference vector (r_v - r_u)
+- Payoff value S^uv
+
+Payoffs are computed once per time step during strategy generation and stored efficiently, making them accessible throughout the CLI workflow without recomputation. This analysis helps understand the pairwise interaction dynamics between voters in the social network.
+
 ## Project Structure
 
 ```
@@ -523,7 +708,8 @@ gt-voting/
 │   ├── rankings_cli.py   # Rankings command
 │   ├── honest_reports_cli.py  # Honest reports command
 │   ├── strategic_reports_cli.py  # Strategic reports command
-│   └── proportions_cli.py  # Proportions plot command
+│   ├── proportions_cli.py  # Proportions plot command
+│   └── ternary_cli.py     # Ternary trajectory plot command
 ├── core/                  # Core functionality
 │   ├── rankings_core.py  # Ranking generation
 │   ├── honest_reports.py # Honest reports generation
@@ -546,6 +732,7 @@ gt-voting/
     ├── plot_rankings.py   # Rankings visualization
     ├── plot_voter_strategies.py  # Strategy visualization
     ├── plot_proportions.py  # Proportion plots (stacked area charts)
+    ├── plot_ternary.py    # Ternary trajectory plots
     └── plot_utils.py      # Shared plotting utilities
 ```
 
