@@ -13,6 +13,11 @@ class GT(BaseMechanism):
     game and finds the optimal mixed strategy using linear programming. The mechanism
     computes a margin matrix for all pairwise comparisons and solves for the Nash
     equilibrium strategy, which provides the probability distribution over candidates.
+    
+    The LP formulation follows the standard zero-sum game formulation (Theorem 2 in
+    the Rivest-Shen paper): maximizes the game value v subject to M^T p >= v * 1,
+    where M is the margin matrix, p is the probability distribution, and v is the
+    minimum expected payoff (game value).
     """
     
     @property
@@ -31,9 +36,10 @@ class GT(BaseMechanism):
         
         The GT system:
         1. Computes a margin matrix M where M[i,j] = (votes i > j) - (votes j > i)
-        2. Transforms this into a zero-sum game
-        3. Finds the optimal mixed strategy using linear programming
-        4. Returns the Nash equilibrium probabilities
+        2. Models the election as a zero-sum game with payoff matrix M
+        3. Finds the Nash equilibrium mixed strategy using linear programming
+           (standard formulation: maximize v subject to M^T p >= v * 1, sum(p) = 1)
+        4. Returns the optimal probability distribution over candidates
         
         Args:
             reported_rankings: List of n ranking tuples (e.g., [(0,1,2), (1,0,2), ...])
@@ -50,7 +56,7 @@ class GT(BaseMechanism):
         
         Example:
             >>> rankings = [(0, 1, 2), (1, 2, 0), (2, 0, 1)]  # Rock-paper-scissors cycle
-            >>> mechanism = GTMechanism()
+            >>> mechanism = GT()
             >>> mechanism.aggregate(rankings)
             [0.333..., 0.333..., 0.333...]  # Equal probabilities for symmetric cycle
         """
@@ -97,39 +103,48 @@ class GT(BaseMechanism):
                 M[i, j] = votes_i_over_j - votes_j_over_i
         
         # Compute Optimal Mixed Strategy using Linear Programming
-        # Reference: Rivest-Shen paper, Section 6
-        # We transform the zero-sum game into a linear program.
-        # To use standard LP solvers (which assume variables >= 0),
-        # we shift M so all entries are positive.
-        
-        # Increase every entry in M by some constant value w
-        # We pick w such that M_shifted > 0.
-        w = np.max(np.abs(M)) + 1.0
-        M_shifted = M + w
-        
-        # The LP Problem:
-        # Minimize: sum(p_x)
-        # Subject to: M_shifted * p >= 1 (element-wise)
+        # Reference: Rivest-Shen paper, Theorem 2
+        # Standard zero-sum game LP formulation:
+        # Maximize: v (game value)
+        # Subject to: M^T p >= v * 1 (element-wise)
+        #             sum(p) = 1
         #             p >= 0
+        #
+        # For scipy.optimize.linprog (which minimizes), we reformulate as:
+        # Minimize: -v
+        # Subject to: -M^T p + v <= 0 (equivalent to M^T p >= v)
+        #             sum(p) = 1
+        #             p >= 0, v unbounded
         
-        # scipy.optimize.linprog minimizes c @ x subject to A_ub @ x <= b_ub
-        # So we set c = ones vector (to minimize sum)
-        # And we rearrange constraints: -M_shifted.T @ p <= -1
+        # Variables: x = [p_0, p_1, ..., p_{m-1}, v]
+        # Size: m + 1
         
-        c = np.ones(m)
-        A_ub = -M_shifted.T  # Transpose because we solve for player strategies
-        b_ub = -np.ones(m)
-        bounds = [(0, None) for _ in range(m)]  # p >= 0
+        # Objective: Maximize v -> Minimize -v
+        c = np.zeros(m + 1)
+        c[-1] = -1.0
         
-        res = linprog(c, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method='highs')
+        # Constraints: M^T p >= v  =>  -M^T p + v <= 0
+        # A_ub should be shape (m, m+1)
+        # For each row i of M: -sum(M_ij * p_j) + 1*v <= 0
+        A_ub = np.hstack([-M.T, np.ones((m, 1))])
+        b_ub = np.zeros(m)
+        
+        # Equality constraint: sum(p) = 1
+        # [1, 1, ..., 1, 0] * x = 1
+        A_eq = np.zeros((1, m + 1))
+        A_eq[0, :m] = 1.0
+        b_eq = np.array([1.0])
+        
+        # Bounds: p_i >= 0 for all i, v is unbounded
+        bounds = [(0, None) for _ in range(m)] + [(None, None)]
+        
+        res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
         
         if not res.success:
             raise ValueError(f"Linear programming optimization failed: {res.message}")
         
-        # The solution 'p' from this specific LP formulation is unnormalized.
-        # The true probabilities are normalized: p* = p / sum(p)
-        p_unnormalized = res.x
-        p_optimal = p_unnormalized / np.sum(p_unnormalized)
+        # Extract the probability distribution (first m components)
+        p_optimal = res.x[:m]
         
         # Return probabilities as a list in candidate order
         # Round to avoid floating point precision issues

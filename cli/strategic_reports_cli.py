@@ -56,6 +56,9 @@ Examples:
   
   # With custom graph topology (path graph: 0-1,1-2,2-3,3-4,4-5)
   uv run python -m cli.strategic_reports_cli --m 3 --n 6 --T 5 --graph "0-1,1-2,2-3,3-4,4-5"
+  
+  # Using expected-score variant (deterministic dynamics)
+  uv run python -m cli.strategic_reports_cli --m 3 --n 6 --T 5 --use-expected-score
         """
     )
     parser.add_argument(
@@ -90,7 +93,7 @@ Examples:
         "--T",
         type=int,
         required=True,
-        help="Number of iterations (time steps) for strategic evolution"
+        help="Total number of time steps. Plots will show t=0 to t=T-1 (T total time steps)"
     )
     parser.add_argument(
         "--strategy",
@@ -144,6 +147,14 @@ Examples:
         default=None,
         dest="sharpness",
         help="Alias for --sharpness (deprecated, use --sharpness instead)"
+    )
+    parser.add_argument(
+        "--use-expected-score",
+        action="store_true",
+        dest="use_expected_score",
+        help="Use expected-score variant where realized neighbor rankings are replaced by "
+             "their mixed strategies, yielding deterministic dynamics. Only used when --strategy=gt_strategy. "
+             "Default: False (uses sampled rankings)"
     )
     parser.add_argument(
         "--distance-metric",
@@ -246,10 +257,13 @@ Examples:
         parser.error(str(e))
     
     # Generate strategic reports
+    # T represents total time steps, but strategy generates T+1 when T is passed
+    # So we pass max(1, T-1) to get T total time steps (t=0 to t=T-1)
+    # Use max(1, T-1) because strategy requires T >= 1
     try:
         results = generate_strategic_reports(
             honest_reports=honest_reports,
-            T=args.T,
+            T=max(1, args.T - 1),
             m=args.m,
             seed=args.seed,
             strategy=args.strategy,
@@ -257,6 +271,7 @@ Examples:
             anchor_strength=args.anchor_strength,
             learning_rate=args.learning_rate,
             sharpness=args.sharpness,
+            use_expected_score=args.use_expected_score,
             # SimilarityStrategy parameters
             distance_metric=args.distance_metric,
             # Graph topology
@@ -266,19 +281,22 @@ Examples:
         parser.error(str(e))
 
     # Unpack standardized results dict
-    strategies = results["reports"]
-    selected_probs = results.get("selected_probs")
+    strategies_full = results["reports"]
+    # Slice to get only the first T time steps (t=0 to t=T-1)
+    strategies = strategies_full[:, :args.T]
+    selected_probs_full = results.get("selected_probs")
+    selected_probs = selected_probs_full[:, :args.T] if selected_probs_full is not None else None
     
     # Get all possible rankings for output formatting
     all_rankings = generate_rankings(args.m, alphabetical=False)
     
     # Output results
-    # Output format: for each voter, show their trajectory (all T+1 time steps)
+    # Output format: for each voter, show their trajectory (t=0 to t=T-1)
     if args.alphabetical:
         labels = candidate_labels(args.m)
         for i in range(n):
             print(f"Voter {i}:")
-            for t in range(args.T + 1):
+            for t in range(args.T):
                 ranking_idx = strategies[i, t]
                 ranking = all_rankings[ranking_idx]
                 alphabetical_ranking = tuple(labels[c] for c in ranking)
@@ -287,21 +305,21 @@ Examples:
     else:
         for i in range(n):
             print(f"Voter {i}:")
-            for t in range(args.T + 1):
+            for t in range(args.T):
                 ranking_idx = strategies[i, t]
                 ranking = all_rankings[ranking_idx]
                 print(f"  t={t}: {ranking}")
     
     # Plot if requested
     if args.plot or args.save:
-        # Plot the heatmap showing trajectory over T+1 time steps (including t=0)
+        # Plot the heatmap showing trajectory over T time steps (t=0 to t=T-1)
         ax = plot_voter_strategies(
             strategies,
             all_rankings,
             labels=None,
             ax=None,
             show_integers=False,
-            title=(f"Strategic Reports Evolution\n({n} voters, {args.m} candidates, {args.T+1} time steps)"),
+            title=(f"Strategic Reports Evolution\n({n} voters, {args.m} candidates, {args.T} time steps)"),
             probs=selected_probs,
         )
         

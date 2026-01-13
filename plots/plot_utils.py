@@ -4,6 +4,15 @@ import numpy as np
 import matplotlib.colors as mcolors
 from core.rankings_core import candidate_labels
 
+# Shared plotting configuration constants for consistent styling across plots
+PLOT_FIGSIZE = (12, 8)  # Figure size (width, height) in inches
+PLOT_TITLE_FONTSIZE = 21
+PLOT_TITLE_PAD = 20
+PLOT_AXIS_LABEL_FONTSIZE = 18
+PLOT_TICK_LABELSIZE = 15
+PLOT_LEGEND_FONTSIZE = 15  # Used for legends and colorbar labels
+PLOT_COLORBAR_TICK_LABELSIZE = 15
+
 
 def prepare_labels(rankings, labels=None):
     """

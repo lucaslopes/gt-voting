@@ -147,7 +147,7 @@ def main():
         "--T",
         type=int,
         required=True,
-        help="Number of iterations (time steps) for strategic evolution"
+        help="Total number of time steps. Plots will show t=0 to t=T-1 (T total time steps)"
     )
     strategic_reports_parser.add_argument(
         "--strategy",
@@ -263,8 +263,8 @@ def main():
         "--T",
         type=int,
         default=None,
-        help="Number of iterations for strategic reports. If provided, shows evolution over time. "
-             "If not provided, shows single election outcome."
+        help="Total number of time steps. Plots will show t=0 to t=T-1 (T total time steps). "
+             "If provided, shows evolution over time. If not provided, shows single election outcome."
     )
     proportions_parser.add_argument(
         "--strategy",
@@ -360,6 +360,22 @@ def main():
         action="store_true",
         help="Export the plot as a high-quality PDF file"
     )
+    proportions_parser.add_argument(
+        "--time-average",
+        action="store_true",
+        dest="time_average",
+        help="Plot time-averaged outcomes \\hat{p}^t instead of instantaneous outcomes p^t. "
+             "Only available for strategic reports mode (when --T is provided) and when using GTStrategy. "
+             "Time-averaged outcomes are defined as \\hat{p}^t = (1/t) * sum_{tau=1}^t p^tau."
+    )
+    proportions_parser.add_argument(
+        "--show-both",
+        action="store_true",
+        dest="show_both",
+        help="Display both instantaneous and time-averaged outcomes side-by-side. "
+             "Only available for strategic reports mode (when --T is provided) and when using GTStrategy. "
+             "Creates two subplots: left shows instantaneous p^t, right shows time-averaged \\hat{p}^t."
+    )
     
     args = parser.parse_args()
     
@@ -419,6 +435,8 @@ def main():
         strategic_reports_args.extend(['--seed', str(args.seed)])
         if args.baselines is not None:
             strategic_reports_args.extend(['--baselines', args.baselines])
+        # T represents total time steps, but strategy generates T+1 when T is passed
+        # So we pass T-1 to get T total time steps (t=0 to t=T-1)
         strategic_reports_args.extend(['--T', str(args.T)])
         strategic_reports_args.extend(['--strategy', args.strategy])
         strategic_reports_args.extend(['--anchor-strength', str(args.anchor_strength)])
@@ -457,6 +475,10 @@ def main():
             proportions_args.append('--plot')
         if args.save:
             proportions_args.append('--save')
+        if hasattr(args, 'time_average') and args.time_average:
+            proportions_args.append('--time-average')
+        if hasattr(args, 'show_both') and args.show_both:
+            proportions_args.append('--show-both')
         proportions_main(proportions_args)
 
 

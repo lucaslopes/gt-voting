@@ -49,7 +49,8 @@ class SimilarityStrategy(BaseStrategy):
         
         Args:
             honest_reports: List of ranking tuples (baseline honest reports), one per voter
-            T: Number of iterations (time steps)
+            T: Number of iterations (time steps 1..T), with t=0 being the initial state.
+               Total time steps tracked: T+1 (t=0 to t=T inclusive)
             m: Number of candidates
             seed: Random seed for reproducibility (used if rng is None)
             rng: Optional numpy Generator (if provided, uses this instead of creating new one)

@@ -10,8 +10,9 @@ class BaseStrategy(ABC):
     Abstract base class for voter strategies.
     
     All strategies must implement the generate_reports() method which takes honest reports
-    and evolves them over T time steps, returning a numpy array of shape [n, T+1] where
-    each cell contains a ranking index.
+    and evolves them over T iterations, returning a numpy array of shape [n, T+1] where
+    each cell contains a ranking index. T is the number of iterations (time steps 1..T),
+    with t=0 being the initial state. Total time steps tracked: T+1 (t=0 to t=T inclusive).
     """
     
     @property
@@ -37,7 +38,8 @@ class BaseStrategy(ABC):
         
         Args:
             honest_reports: List of ranking tuples (baseline honest reports), one per voter
-            T: Number of iterations (time steps)
+            T: Number of iterations (time steps 1..T), with t=0 being the initial state.
+               Total time steps tracked: T+1 (t=0 to t=T inclusive)
             m: Number of candidates
             seed: Random seed for reproducibility (used if rng is None)
             rng: Optional numpy Generator (if provided, uses this instead of creating new one)

@@ -81,7 +81,8 @@ Examples:
         "--T",
         type=int,
         default=None,
-        help="Number of iterations for strategic reports. If provided, uses strategic reports mode."
+        help="Total number of time steps. Plots will show t=0 to t=T-1 (T total time steps). "
+             "If provided, uses strategic reports mode."
     )
     
     # Arguments for generating reports
@@ -191,6 +192,20 @@ Examples:
         action="store_true",
         help="Export the plot as a high-quality PDF file"
     )
+    parser.add_argument(
+        "--time-average",
+        action="store_true",
+        help="Plot time-averaged outcomes \\hat{p}^t instead of instantaneous outcomes p^t. "
+             "Only available for strategic reports mode (when --T is provided) and when using GTStrategy. "
+             "Time-averaged outcomes are defined as \\hat{p}^t = (1/t) * sum_{tau=1}^t p^tau."
+    )
+    parser.add_argument(
+        "--show-both",
+        action="store_true",
+        help="Display both instantaneous and time-averaged outcomes side-by-side. "
+             "Only available for strategic reports mode (when --T is provided) and when using GTStrategy. "
+             "Creates two subplots: left shows instantaneous p^t, right shows time-averaged \\hat{p}^t."
+    )
     
     args = parser.parse_args(args)
     
@@ -243,6 +258,9 @@ Examples:
             parser.error(str(e))
         
         # Generate strategic reports
+        # T represents total time steps (t=0 to t=T-1, so T total steps)
+        # Strategy generates reports for t=0 to t=T (T+1 steps) and p_history/p_avg_history for t=1 to t=T (T entries)
+        # So we pass args.T to get T iterations for p_history/p_avg_history (t=1 to t=T)
         try:
             strategies_result = generate_strategic_reports(
                 honest_reports=honest_reports,
@@ -261,7 +279,24 @@ Examples:
             parser.error(str(e))
         
         # Extract the reports array from the dict (generate_strategic_reports returns a dict)
-        strategies = strategies_result["reports"]
+        strategies_full = strategies_result["reports"]
+        # Slice to get t=0 to t=T (T+1 time steps) to match p_avg_history which covers t=1 to t=T
+        strategies = strategies_full[:, :args.T + 1]
+        
+        # Extract p_history and p_avg_history if available (from GTStrategy)
+        p_history_full = strategies_result.get("p_history")
+        p_avg_history_full = strategies_result.get("p_avg_history")
+        # p_history and p_avg_history have shape [T, m] for t=1 to t=T (where T was passed to generate_strategic_reports)
+        # We want the first args.T entries (for t=1 to t=args.T)
+        p_history = p_history_full[:args.T] if p_history_full is not None else None
+        p_avg_history = p_avg_history_full[:args.T] if p_avg_history_full is not None else None
+        
+        # Validate time-averaging flags
+        if args.time_average or args.show_both:
+            if args.strategy != "gt_strategy":
+                parser.error("--time-average and --show-both are only available when using GTStrategy (--strategy=gt_strategy)")
+            if p_avg_history is None:
+                parser.error("Time-averaged outcomes not available. This may occur if the strategy doesn't support time-averaging.")
         
         # Get all possible rankings
         all_rankings = generate_rankings(args.m, alphabetical=False)
@@ -277,43 +312,137 @@ Examples:
         else:
             print(f"  Anchor strength: {args.anchor_strength}, Distance Metric: {args.distance_metric}")
         print(f"  Mechanism: {args.mechanism}")
+        if p_history is not None and p_avg_history is not None:
+            print(f"  Time-averaging: Available (instantaneous and time-averaged outcomes tracked)")
         print()
         
         # Print probabilities for each time step
-        for t in range(args.T + 1):
-            rankings_at_t = [all_rankings[strategies[i, t]] for i in range(n)]
-            probs = aggregate_rankings(rankings_at_t, mechanism=args.mechanism)
-            print(f"Time step t={t}: {probs}")
+        if args.time_average and p_avg_history is not None:
+            # Print time-averaged outcomes
+            # p_avg_history was computed with GT mechanism, so if user wants GT, use it directly
+            # Otherwise, we need to recompute from strategies
+            if args.mechanism.upper() == "GT":
+                # Use precomputed p_avg_history (computed with GT)
+                # First, print t=0 (instantaneous, no averaging yet)
+                rankings_at_t0 = [all_rankings[strategies[i, 0]] for i in range(n)]
+                probs_t0 = aggregate_rankings(rankings_at_t0, mechanism=args.mechanism)
+                print(f"Time-averaged \\hat{{p}}^0: {probs_t0}")
+                # Then print time-averaged outcomes for t=1 to t=T-1 (from p_avg_history)
+                for t_idx, p_avg in enumerate(p_avg_history):
+                    print(f"Time-averaged \\hat{{p}}^{t_idx+1}: {p_avg}")
+            else:
+                # User wants different mechanism, compute time-averaged from strategies
+                p_sum = np.zeros(args.m, dtype=float)
+                # Print t=0 (instantaneous, no averaging yet)
+                rankings_at_t0 = [all_rankings[strategies[i, 0]] for i in range(n)]
+                probs_t0 = aggregate_rankings(rankings_at_t0, mechanism=args.mechanism)
+                print(f"Time-averaged \\hat{{p}}^0: {probs_t0}")
+                # Compute and print time-averaged for t=1 to t=T-1
+                for t in range(1, args.T):
+                    rankings_at_t = [all_rankings[strategies[i, t]] for i in range(n)]
+                    probs = aggregate_rankings(rankings_at_t, mechanism=args.mechanism)
+                    p_sum += np.array(probs)
+                    p_avg = p_sum / t
+                    print(f"Time-averaged \\hat{{p}}^{t}: {p_avg}")
+        else:
+            # Print instantaneous outcomes for each time step (t=0 to t=T)
+            # strategies has shape [n, T+1] with columns for t=0 to t=T
+            for t in range(args.T + 1):
+                rankings_at_t = [all_rankings[strategies[i, t]] for i in range(n)]
+                probs = aggregate_rankings(rankings_at_t, mechanism=args.mechanism)
+                print(f"Time step t={t}: {probs}")
+        
+        # Print time-averaged outcomes if available and not already printed
+        if p_avg_history is not None and not args.time_average and not args.show_both:
+            print("\nTime-averaged outcomes (use --time-average to plot):")
+            for t_idx, p_avg in enumerate(p_avg_history):
+                print(f"Time-averaged \\hat{{p}}^{t_idx+1}: {p_avg}")
         
         # Plot if requested
         if args.plot or args.save:
-            ax = plot_proportions(
-                strategies,
-                m=args.m,
-                all_rankings=all_rankings,
-                labels=None,
-                mechanism=args.mechanism,
-                ax=None,
-                title=args.title,
-                show_integers=args.show_integers
-            )
-            
-            # Save as PDF if requested
-            if args.save:
-                filename = generate_pdf_filename(args)
-                fig = ax.figure
-                fig.savefig(
-                    filename,
-                    format='pdf',
-                    dpi=300,
-                    bbox_inches='tight',
-                    pad_inches=0.1
+            if args.show_both:
+                # Create side-by-side subplots
+                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 8))
+                
+                # Left plot: instantaneous outcomes
+                ax1 = plot_proportions(
+                    strategies,
+                    m=args.m,
+                    all_rankings=all_rankings,
+                    labels=None,
+                    mechanism=args.mechanism,
+                    ax=ax1,
+                    title=args.title if args.title else "Instantaneous Outcomes p^t",
+                    show_integers=args.show_integers,
+                    use_time_average=False,
+                    p_history=p_history,
+                    p_avg_history=p_avg_history
                 )
-                print(f"Plot saved to: {filename}")
-            
-            # Show plot if requested
-            if args.plot:
-                plt.show()
+                
+                # Right plot: time-averaged outcomes
+                ax2 = plot_proportions(
+                    strategies,
+                    m=args.m,
+                    all_rankings=all_rankings,
+                    labels=None,
+                    mechanism=args.mechanism,
+                    ax=ax2,
+                    title=args.title if args.title else "Time-Averaged Outcomes \\hat{p}^t",
+                    show_integers=args.show_integers,
+                    use_time_average=True,
+                    p_history=p_history,
+                    p_avg_history=p_avg_history
+                )
+                
+                plt.tight_layout()
+                
+                # Save as PDF if requested
+                if args.save:
+                    filename = generate_pdf_filename(args)
+                    fig.savefig(
+                        filename,
+                        format='pdf',
+                        dpi=300,
+                        bbox_inches='tight',
+                        pad_inches=0.1
+                    )
+                    print(f"Plot saved to: {filename}")
+                
+                # Show plot if requested
+                if args.plot:
+                    plt.show()
+            else:
+                # Single plot
+                ax = plot_proportions(
+                    strategies,
+                    m=args.m,
+                    all_rankings=all_rankings,
+                    labels=None,
+                    mechanism=args.mechanism,
+                    ax=None,
+                    title=args.title,
+                    show_integers=args.show_integers,
+                    use_time_average=args.time_average,
+                    p_history=p_history,
+                    p_avg_history=p_avg_history
+                )
+                
+                # Save as PDF if requested
+                if args.save:
+                    filename = generate_pdf_filename(args)
+                    fig = ax.figure
+                    fig.savefig(
+                        filename,
+                        format='pdf',
+                        dpi=300,
+                        bbox_inches='tight',
+                        pad_inches=0.1
+                    )
+                    print(f"Plot saved to: {filename}")
+                
+                # Show plot if requested
+                if args.plot:
+                    plt.show()
         
     else:
         # Single election mode: generate one set of rankings

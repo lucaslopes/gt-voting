@@ -37,7 +37,7 @@ class GTStrategy(BaseStrategy):
         return "gt_strategy"
     
     def __init__(self, anchor_strength=0.1, learning_rate=0.2, sharpness=3.0,
-                 alpha=None, eta=None, beta=None):
+                 alpha=None, eta=None, beta=None, use_expected_score=False):
         """
         Initialize GTStrategy with parameters.
         
@@ -55,6 +55,9 @@ class GTStrategy(BaseStrategy):
             alpha: Alias for anchor_strength (deprecated, use anchor_strength instead)
             eta: Alias for learning_rate (deprecated, use learning_rate instead)
             beta: Alias for sharpness (deprecated, use sharpness instead)
+            use_expected_score: If True, use expected-score variant where realized
+                neighbor rankings are replaced by their mixed strategies, yielding
+                deterministic dynamics. If False (default), use sampled rankings.
         """
         # Handle backward compatibility aliases
         if alpha is not None:
@@ -75,6 +78,7 @@ class GTStrategy(BaseStrategy):
         self.anchor_strength = anchor_strength
         self.learning_rate = learning_rate
         self.sharpness = sharpness
+        self.use_expected_score = use_expected_score
     
     def generate_reports(self, honest_reports, T, m, seed=None, rng=None, graph=None, **kwargs):
         """
@@ -82,14 +86,18 @@ class GTStrategy(BaseStrategy):
         
         Reports start from honest_reports and evolve based on iterative game theory
         dynamics. At each step:
-        1. Sample rankings from current strategy distribution
+        1. If use_expected_score=False (default): Sample rankings from current strategy distribution
+           If use_expected_score=True: Compute expected margin matrix from mixed strategies
         2. Aggregate using GT mechanism to get outcome p_t
         3. Compute scores for each permutation based on p_tilde
+           - If use_expected_score=False: Uses simplified score computation
+           - If use_expected_score=True: Uses expected neighbor rank vectors (deterministic)
         4. Update strategy distribution using logit response with anchoring
         
         Args:
             honest_reports: List of ranking tuples (baseline honest reports), one per voter
-            T: Number of iterations (time steps)
+            T: Number of iterations (time steps 1..T), with t=0 being the initial state.
+               Total time steps tracked: T+1 (t=0 to t=T inclusive)
             m: Number of candidates
             seed: Random seed for reproducibility (used if rng is None)
             rng: Optional numpy Generator (if provided, uses this instead of creating new one)
@@ -101,15 +109,22 @@ class GTStrategy(BaseStrategy):
             dict with at least the following keys:
                 "reports": numpy array of shape [n, T+1] where:
                     - n is the number of voters
-                    - Column 0 contains honest reports (initial state)
-                    - Columns 1..T contain evolved reports at each iteration
+                    - Column 0 (t=0) contains honest reports (initial state)
+                    - Columns 1..T (t=1..T) contain evolved reports at each iteration
                     - Each cell contains a ranking index (position in all_rankings)
+                    - Total time steps: T+1 (t=0 to t=T inclusive)
                 "selected_probs": numpy array of shape [n, T+1] where:
                     - selected_probs[i, t] is the probability mass that voter i's
                       internal strategy distribution x assigns to their selected
                       (most likely) ranking at time step t.
-                    - Column 0 is identically 1.0, since each voter starts with
+                    - Column 0 (t=0) is identically 1.0, since each voter starts with
                       probability 1.0 on their honest baseline ranking.
+                "p_history": numpy array of shape [T, m] where:
+                    - p_history[t-1] is the instantaneous outcome p^t at time step t
+                    - Contains outcomes for t=1..T (not including t=0)
+                "p_avg_history": numpy array of shape [T, m] where:
+                    - p_avg_history[t-1] is the time-averaged outcome \\hat{p}^t = (1/t) * sum_{tau=1}^t p^tau
+                    - Contains time-averaged outcomes for t=1..T (not including t=0)
         
         Raises:
             ValueError: If honest_reports is empty, T < 1, m < 1, or other validation fails
@@ -147,25 +162,46 @@ class GTStrategy(BaseStrategy):
         # At t=0, each voter has probability 1.0 on their honest baseline ranking
         selected_probs = np.ones((n, T + 1), dtype=float)
         
+        # Track instantaneous outcomes p^t and time-averaged outcomes \hat{p}^t
+        # p_history[t-1] = p^t (instantaneous outcome at time t, for t=1..T)
+        # p_avg_history[t-1] = \hat{p}^t = (1/t) * sum_{tau=1}^t p^tau
+        p_history = []
+        p_avg_history = []
+        p_sum = np.zeros(m, dtype=float)  # Accumulator for time-averaging
+        
         # Compute per-voter degrees from graph (complete graph default if graph is None)
         deg = compute_degrees(graph, n)
         
         # Iterate over T time steps
         for t in range(1, T + 1):
-            # Sample rankings from current strategy distribution
-            current_rankings = self._sample_rankings_from_distribution(
-                x, all_rankings, rng
-            )
+            if self.use_expected_score:
+                # Expected-score variant: use expected margin matrix (deterministic)
+                M = self._compute_expected_margin_matrix(x, all_rankings, m)
+                p_t = self._solve_gt_game_from_margin_matrix(M, m)
+            else:
+                # Sampled variant: sample rankings and aggregate
+                current_rankings = self._sample_rankings_from_distribution(
+                    x, all_rankings, rng
+                )
+                # Aggregate using GT mechanism to get p_t
+                p_t = np.array(aggregate_rankings(current_rankings, mechanism="GT"))
             
-            # Aggregate using GT mechanism to get p_t
-            p_t = np.array(aggregate_rankings(current_rankings, mechanism="GT"))
+            # Store instantaneous outcome p^t
+            p_history.append(p_t.copy())
+            
+            # Accumulate for time-averaging: p_sum += p^t
+            p_sum += p_t
+            
+            # Compute time-averaged outcome: \hat{p}^t = (1/t) * sum_{tau=1}^t p^tau
+            p_avg = p_sum / t
+            p_avg_history.append(p_avg.copy())
             
             # Compute p_tilde (centered around uniform distribution)
             p_tilde = p_t - (1.0 / m)
             
             # Update strategy distribution
             x = self._update_strategy_distribution(
-                x, p_tilde, baselines, rank_vectors, deg
+                x, p_tilde, baselines, rank_vectors, deg, graph=graph
             )
             
             # Record most likely ranking for each voter (argmax of x[i])
@@ -178,6 +214,8 @@ class GTStrategy(BaseStrategy):
         return {
             "reports": reports,
             "selected_probs": selected_probs,
+            "p_history": np.array(p_history),  # Shape [T, m]
+            "p_avg_history": np.array(p_avg_history),  # Shape [T, m]
         }
     
     def _compute_rank_vectors(self, m, all_rankings):
@@ -248,12 +286,113 @@ class GTStrategy(BaseStrategy):
         
         return sampled_rankings
     
-    def _update_strategy_distribution(self, x, p_tilde, baselines, rank_vectors, deg):
+    def _compute_expected_margin_matrix(self, x, all_rankings, m):
+        """
+        Compute expected margin matrix from probability distributions.
+        
+        This is the deterministic variant where we compute the margin matrix
+        from expected rankings rather than sampling. For each pair (a, b),
+        M[a,b] = Σ_i Σ_k x[i,k] * pref[k,a,b] where pref[k,a,b] = 1 if a>b in perm k, else -1.
+        
+        Args:
+            x: Strategy distribution, shape [n, n_perms]
+            all_rankings: List of all possible ranking tuples
+            m: Number of candidates
+        
+        Returns:
+            numpy array of shape [m, m] representing the expected margin matrix
+        """
+        n, n_perms = x.shape
+        M = np.zeros((m, m))
+        
+        # Precompute pairwise preferences for all permutations
+        # pairwise_pref[k, a, b] = 1 if a>b in perm k, -1 if b>a, 0 if a==b
+        pairwise_pref = np.zeros((n_perms, m, m))
+        for k, ranking in enumerate(all_rankings):
+            for a in range(m):
+                for b in range(m):
+                    if a == b:
+                        continue
+                    # Find positions in ranking
+                    pos_a = ranking.index(a)
+                    pos_b = ranking.index(b)
+                    if pos_a < pos_b:  # a is preferred over b
+                        pairwise_pref[k, a, b] = 1
+                    else:  # b is preferred over a
+                        pairwise_pref[k, a, b] = -1
+        
+        # Compute expected margin matrix
+        # M[a,b] = Σ_i Σ_k x[i,k] * pairwise_pref[k,a,b]
+        # Sum x across voters -> total weight on each permutation
+        total_x = np.sum(x, axis=0)  # Shape: [n_perms]
+        
+        # M[a,b] = Σ_k total_x[k] * pairwise_pref[k,a,b]
+        for a in range(m):
+            for b in range(m):
+                if a == b:
+                    continue
+                M[a, b] = np.sum(total_x * pairwise_pref[:, a, b])
+        
+        return M
+    
+    def _solve_gt_game_from_margin_matrix(self, M, m):
+        """
+        Solve GT game from margin matrix using linear programming.
+        
+        Solves max_p min_q p^T M q, which is equivalent to finding the Nash
+        equilibrium mixed strategy for the zero-sum game defined by margin matrix M.
+        
+        Args:
+            M: Margin matrix, shape [m, m]
+            m: Number of candidates
+        
+        Returns:
+            numpy array of shape [m] representing the probability distribution over candidates
+        """
+        from scipy.optimize import linprog
+        
+        # Single candidate case
+        if m == 1:
+            return np.array([1.0])
+        
+        # LP formulation: Maximize v subject to M^T p >= v * 1, sum(p) = 1, p >= 0
+        # For scipy.optimize.linprog (minimizes), reformulate as:
+        # Minimize: -v
+        # Subject to: -M^T p + v <= 0, sum(p) = 1, p >= 0, v unbounded
+        
+        # Variables: [p_0, ..., p_{m-1}, v]
+        c = np.zeros(m + 1)
+        c[-1] = -1.0  # Minimize -v (maximize v)
+        
+        # Constraints: M^T p >= v  =>  -M^T p + v <= 0
+        A_ub = np.hstack([-M.T, np.ones((m, 1))])
+        b_ub = np.zeros(m)
+        
+        # Equality constraint: sum(p) = 1
+        A_eq = np.zeros((1, m + 1))
+        A_eq[0, :m] = 1.0
+        b_eq = np.array([1.0])
+        
+        # Bounds: p_i >= 0 for all i, v is unbounded
+        bounds = [(0, None) for _ in range(m)] + [(None, None)]
+        
+        res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        
+        if res.success:
+            return res.x[:m]
+        else:
+            # Fallback to uniform distribution
+            return np.ones(m) / m
+    
+    def _update_strategy_distribution(self, x, p_tilde, baselines, rank_vectors, deg, graph=None):
         """
         Update strategy distribution using logit response dynamics with anchoring.
         
         For each voter i:
-        1. Compute scores for each permutation: score[k] = -deg[i] * <p_tilde, r_k>
+        1. Compute scores for each permutation:
+           - If use_expected_score=False: score[k] = -deg[i] * <p_tilde, r_k>
+           - If use_expected_score=True: score[k] = Σ_{j:{i,j}∈E} <p_tilde, E_r_j - r_k>
+             where E_r_j = Σ_σ x_j[σ] * r_σ is the expected rank vector of neighbor j
         2. Apply logit response: for each voter i, convert scores into a distribution
            using a sharpness parameter (higher sharpness = sharper best response).
         3. Update: x[i] = (1 - learning_rate) * x[i] +
@@ -266,6 +405,8 @@ class GTStrategy(BaseStrategy):
             rank_vectors: Precomputed rank vectors, shape [n_perms, m]
             deg: Array of degrees for each voter, shape [n]
                  Each deg[i] is the degree of voter i in the social network
+            graph: Optional igraph.Graph object defining social network topology.
+                  If None, assumes complete graph. Only used when use_expected_score=True.
         
         Returns:
             Updated strategy distribution, shape [n, n_perms]
@@ -273,14 +414,46 @@ class GTStrategy(BaseStrategy):
         n, n_perms = x.shape
         m = len(p_tilde)
         
-        # Precompute dot products: rank_vectors @ p_tilde gives [n_perms]
-        dot_products = rank_vectors @ p_tilde  # Shape: [n_perms]
-        
-        # Compute scores for all voters and permutations using broadcasting
-        # deg: shape (n,), dot_products: shape (n_perms,)
-        # scores: shape (n, n_perms) where scores[i, k] = -deg[i] * <p_tilde, r_k>
-        # This implements Term B: -|N(i)| * <p_tilde, r_pi> for each voter i and permutation k
-        scores = -deg[:, np.newaxis] * dot_products[np.newaxis, :]  # Shape: [n, n_perms]
+        if self.use_expected_score:
+            # Expected-score variant: use expected neighbor rank vectors
+            # Get adjacency matrix from graph
+            if graph is None:
+                # Complete graph: all voters are neighbors
+                adj = np.ones((n, n)) - np.eye(n)
+            else:
+                # Get adjacency matrix from igraph Graph
+                adj = np.array(graph.get_adjacency().data)
+            
+            # Compute expected rank vectors for all voters: E_r_i = Σ_σ x_i[σ] * r_σ
+            # rank_vectors: [n_perms, m], x: [n, n_perms]
+            # expected_rank_vectors: [n, m] where expected_rank_vectors[i] = Σ_k x[i,k] * rank_vectors[k]
+            expected_rank_vectors = x @ rank_vectors  # Shape: [n, m]
+            
+            # Compute scores: s̄_i(π) = Σ_{j:{i,j}∈E} <p̃, E_r_j - r_π>
+            # This expands to: Σ_{j:{i,j}∈E} <p̃, E_r_j> - |N(i)| * <p̃, r_π>
+            # First term is constant w.r.t. π, so we can drop it in softmax (but compute for correctness)
+            
+            # Compute neighbor contribution: Σ_{j:{i,j}∈E} <p̃, E_r_j>
+            # adj: [n, n], expected_rank_vectors: [n, m], p_tilde: [m]
+            # neighbor_scores: [n] where neighbor_scores[i] = Σ_j adj[i,j] * <p_tilde, expected_rank_vectors[j]>
+            neighbor_scores = adj @ (expected_rank_vectors @ p_tilde)  # Shape: [n]
+            
+            # Compute scores for all voters and permutations
+            # scores[i, k] = neighbor_scores[i] - deg[i] * <p_tilde, r_k>
+            # The neighbor_scores term is constant w.r.t. k, so it will cancel in softmax
+            dot_products = rank_vectors @ p_tilde  # Shape: [n_perms]
+            scores = (neighbor_scores[:, np.newaxis] - 
+                     deg[:, np.newaxis] * dot_products[np.newaxis, :])  # Shape: [n, n_perms]
+        else:
+            # Sampled variant: simplified score computation
+            # Precompute dot products: rank_vectors @ p_tilde gives [n_perms]
+            dot_products = rank_vectors @ p_tilde  # Shape: [n_perms]
+            
+            # Compute scores for all voters and permutations using broadcasting
+            # deg: shape (n,), dot_products: shape (n_perms,)
+            # scores: shape (n, n_perms) where scores[i, k] = -deg[i] * <p_tilde, r_k>
+            # This implements Term B: -|N(i)| * <p_tilde, r_pi> for each voter i and permutation k
+            scores = -deg[:, np.newaxis] * dot_products[np.newaxis, :]  # Shape: [n, n_perms]
         
         # Logit response: normalize scores per voter to avoid overflow
         # Subtract max per voter (along permutation axis)

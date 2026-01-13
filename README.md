@@ -142,6 +142,9 @@ uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --anchor-strength 0.9 
 
 # GTStrategy with low anchor strength (more strategic adaptation)
 uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --anchor-strength 0.1 --plot
+
+# GTStrategy with expected-score variant (deterministic dynamics)
+uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --use-expected-score --plot
 ```
 
 #### Strategies
@@ -162,11 +165,23 @@ Implements iterative game theory dynamics where voters strategically update thei
 - `--sharpness` (float, >0, default: 3.0): Sharpness parameter controlling exploration vs exploitation. Accepts `--beta` as alias.
   - Higher sharpness: More exploitation (sharper best-response distribution, more focused on high-scoring rankings)
   - Lower sharpness: More exploration (flatter distribution, more random exploration)
+- `--use-expected-score` (flag, default: False): Use expected-score variant where realized neighbor rankings are replaced by their mixed strategies, yielding deterministic dynamics.
+  - **False (default)**: Sampled variant - rankings are sampled from probability distributions at each time step, introducing stochasticity. The same seed may produce different trajectories due to randomness in sampling.
+  - **True**: Expected-score variant - uses expected margin matrix computed from mixed strategies, resulting in deterministic dynamics. The same seed always produces the same trajectory. This variant replaces realized neighbor rankings π_j^t with their mixed strategies x_j^{t-1} and computes scores as: s̄_i(π) = Σ_{j:{i,j}∈E} <p̃, E_r_j - r_π> where E_r_j = Σ_σ x_j[σ] * r_σ is the expected rank vector of neighbor j. This yields a deterministic update map on the strategy space X, making the dynamics smoother and easier to analyze.
 
 **How it works:**
-1. At each time step, aggregates current reported rankings using GT mechanism to get outcome probabilities
-2. Computes scores for each possible ranking based on the outcome
-3. Updates each voter's probability distribution over rankings using logit response
+1. At each time step:
+   - **Sampled variant (default)**: 
+     - Samples rankings from current strategy distribution x
+     - Aggregates sampled rankings using GT mechanism to get outcome p_t
+     - Computes scores using simplified formula: s_i(π) = -|N(i)| * <p̃, r_π>
+   - **Expected-score variant** (`--use-expected-score`):
+     - Computes expected margin matrix M from mixed strategies: M[a,b] = Σ_i Σ_k x[i,k] * pref[k,a,b]
+     - Solves GT game deterministically from expected margin matrix to get p_t
+     - Computes scores using expected neighbor rank vectors: s̄_i(π) = Σ_{j:{i,j}∈E} <p̃, E_r_j - r_π>
+     - This yields deterministic dynamics (no randomness from sampling)
+2. Computes scores for each possible ranking based on the outcome p_tilde = p_t - (1/m)
+3. Updates each voter's probability distribution over rankings using logit response with sharpness parameter
 4. Balances strategic adaptation (based on outcomes) with anchoring to baseline reports
 
 ##### SimilarityStrategy (`similarity_strategy`)
@@ -200,6 +215,7 @@ The similarity threshold is calculated as `max_distance = (1 - anchor) * max_pos
 - `--anchor` (float): Anchoring strength (0-1). Controls how much voters stick to baseline. Accepts `--alpha` as alias. Default: 0.1 for GTStrategy, 0.5 for SimilarityStrategy
 - `--learning-rate` (float): Learning rate for GTStrategy (0-1, default: 0.2). Accepts `--eta` as alias. Only used when `--strategy=gt_strategy`
 - `--sharpness` (float): Sharpness parameter for GTStrategy (>0, default: 3.0). Accepts `--beta` as alias. Only used when `--strategy=gt_strategy`
+- `--use-expected-score` (flag): Use expected-score variant for GTStrategy (deterministic dynamics). Only used when `--strategy=gt_strategy`. Default: False (uses sampled rankings). When enabled, replaces sampled rankings with expected margin matrices computed from mixed strategies, yielding deterministic update dynamics. See Example 14 for usage.
 - `--distance-metric` (str): Distance metric for SimilarityStrategy. Available: `spearman` (default), `kendall_tau`. Only used when `--strategy=similarity_strategy`
 - `--alphabetical` (flag): Output rankings in alphabetical format instead of integer tuples
 - `--plot` (flag): Display a visual heatmap showing voter strategy evolution over T+1 time steps (including initial honest reports)
@@ -221,6 +237,9 @@ uv run python cli.py proportions --m 3 --n 6 --T 5
 # GTStrategy with custom parameters
 uv run python cli.py proportions --m 3 --n 6 --T 5 --anchor-strength 0.2 --learning-rate 0.3 --sharpness 5.0
 
+# GTStrategy with expected-score variant (deterministic dynamics)
+uv run python cli.py proportions --m 3 --n 6 --T 10 --use-expected-score --plot
+
 # Using SimilarityStrategy
 uv run python cli.py proportions --m 3 --n 6 --T 5 --strategy similarity_strategy --anchor-strength 0.5
 
@@ -241,6 +260,12 @@ uv run python cli.py proportions --m 3 --n 6 --seed 42 --show-integers
 
 # Save plot as PDF (can be used with or without --plot)
 uv run python cli.py proportions --m 3 --baselines "0*2,3*2,4*2" --T 9 --plot --learning-rate 0.4 --sharpness 0.3 --anchor-strength 0.2 --save
+
+# Plot time-averaged outcomes (follows learning-in-games convention)
+uv run python cli.py proportions --m 3 --n 6 --T 10 --time-average --plot
+
+# Show both instantaneous and time-averaged outcomes side-by-side
+uv run python cli.py proportions --m 3 --n 6 --T 10 --show-both --plot
 ```
 
 #### Modes
@@ -264,8 +289,8 @@ The `--mechanism` parameter selects how to aggregate rankings into probabilities
 
 - **GT** (default in `aggregate_rankings`): GT (Game Theory) voting system - models the election as a zero-sum game and finds the optimal mixed strategy using linear programming. Implements the Rivest-Shen GT voting system.
   - Computes a margin matrix M where M[i,j] = (votes i > j) - (votes j > i) for all pairwise comparisons
-  - Transforms this into a zero-sum game and finds the Nash equilibrium strategy using linear programming
-  - Returns probabilities that represent the optimal mixed strategy, ensuring no candidate can be exploited
+  - Uses the standard zero-sum game LP formulation (Theorem 2): maximizes game value v subject to M^T p >= v * 1, sum(p) = 1
+  - Returns probabilities that represent the optimal mixed strategy (Nash equilibrium), ensuring no candidate can be exploited
   - Particularly effective for handling Condorcet cycles (e.g., rock-paper-scissors scenarios)
   - Example: For a symmetric cycle [(0,1,2), (1,2,0), (2,0,1)], returns equal probabilities [0.333..., 0.333..., 0.333...]
 
@@ -290,12 +315,15 @@ The `--mechanism` parameter selects how to aggregate rankings into probabilities
 - `--anchor` (float): Anchoring strength (0-1). Controls how much voters stick to baseline. Accepts `--alpha` as alias. Only used when `--T` is provided. Default: 0.1 for GTStrategy, 0.5 for SimilarityStrategy
 - `--learning-rate` (float): Learning rate for GTStrategy (0-1, default: 0.2). Accepts `--eta` as alias. Only used when `--T` is provided and `--strategy=gt_strategy`
 - `--sharpness` (float): Sharpness parameter for GTStrategy (>0, default: 3.0). Accepts `--beta` as alias. Only used when `--T` is provided and `--strategy=gt_strategy`
+- `--use-expected-score` (flag): Use expected-score variant for GTStrategy (deterministic dynamics). Only used when `--T` is provided and `--strategy=gt_strategy`. Default: False (uses sampled rankings)
 - `--distance-metric` (str): Distance metric for SimilarityStrategy. Only used when `--T` is provided and `--strategy=similarity_strategy`. Available: `spearman` (default), `kendall_tau`
 - `--mechanism` (str): Aggregation mechanism for converting rankings to probabilities (default: `pairwise_majority`). Available: `GT`, `pairwise_majority`, `plurality`
 - `--title` (str): Custom title for the plot
 - `--show-integers` (flag): Show candidate integers instead of alphabetical labels in legend
 - `--plot` (flag): Display a visual proportion plot (stacked area chart)
 - `--save` (flag): Export the plot as a high-quality PDF file (300 DPI). Filename is auto-generated based on parameters (e.g., `proportions_m3_T9_lr0.4_sh0.3_as0.2_GT.pdf` for strategic reports mode, or `proportions_m3_GT.pdf` for single election mode)
+- `--time-average` (flag): Plot time-averaged outcomes \hat{p}^t instead of instantaneous outcomes p^t. Only available for strategic reports mode (when `--T` is provided) and when using GTStrategy. Time-averaged outcomes are defined as \hat{p}^t = (1/t) * sum_{tau=1}^t p^tau. This follows the learning-in-games convention where time averages converge even when instantaneous trajectories cycle.
+- `--show-both` (flag): Display both instantaneous and time-averaged outcomes side-by-side. Only available for strategic reports mode (when `--T` is provided) and when using GTStrategy. Creates two subplots: left shows instantaneous p^t, right shows time-averaged \hat{p}^t.
 
 ## Examples
 
@@ -450,6 +478,42 @@ uv run python cli.py proportions --m 3 --n 6 --seed 42 --mechanism plurality
 
 This demonstrates how different aggregation mechanisms can produce different probability distributions from the same set of rankings.
 
+### Example 13: Time-Averaged Outcomes (Learning-in-Games Convention)
+
+```bash
+# Plot time-averaged outcomes instead of instantaneous
+uv run python cli.py proportions --m 3 --n 6 --T 20 --time-average --plot
+
+# Compare instantaneous vs time-averaged side-by-side
+uv run python cli.py proportions --m 3 --n 6 --T 20 --show-both --plot --save
+```
+
+Time-averaged outcomes \hat{p}^t = (1/t) * sum_{tau=1}^t p^tau follow the learning-in-games convention where time averages converge even when instantaneous trajectories cycle. This is particularly relevant for zero-sum games where many learning dynamics exhibit convergence of time averages rather than pointwise convergence.
+
+### Example 14: Expected-Score Variant (Deterministic Dynamics)
+
+```bash
+# Use expected-score variant for deterministic dynamics
+uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --use-expected-score --plot
+
+# Compare sampled vs expected-score variants
+uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --seed 42 --plot
+uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --seed 42 --use-expected-score --plot
+```
+
+The expected-score variant replaces sampled rankings with expected margin matrices computed from mixed strategies, resulting in deterministic dynamics. Key differences:
+
+- **Deterministic**: Same seed always produces the same trajectory (no randomness from sampling)
+- **Smoother dynamics**: Expected values eliminate stochastic fluctuations, making trajectories easier to analyze
+- **Mathematical analysis**: The deterministic update map facilitates theoretical analysis (see paper, lines 448-459)
+- **Computational**: Uses expected margin matrix computation instead of sampling, which can be faster for large systems
+
+This variant is particularly useful for:
+- Analyzing convergence properties and fixed points
+- Comparing theoretical predictions with simulations
+- Producing reproducible, deterministic visualizations
+- Studying the deterministic update map on the strategy space X
+
 ## Project Structure
 
 ```
@@ -490,7 +554,7 @@ gt-voting/
 The aggregation mechanisms are implemented as classes inheriting from `BaseMechanism`. The system automatically discovers all mechanisms in the `mechanisms/` directory:
 
 - **BaseMechanism**: Abstract base class defining the interface for all mechanisms
-- **GT**: Implements the Rivest-Shen GT (Game Theory) voting system using linear programming to find Nash equilibrium strategies
+- **GT**: Implements the Rivest-Shen GT (Game Theory) voting system using the standard zero-sum game LP formulation (Theorem 2) to find Nash equilibrium strategies
 - **PairwiseMajority**: Implements Pairwise Majority Rule aggregation
 - **Plurality**: Implements Plurality Rule aggregation
 

@@ -7,16 +7,16 @@ import json
 import os
 from core.aggregator_core import aggregate_rankings
 from core.rankings_core import generate_rankings, candidate_labels
-from plots.plot_utils import prepare_labels
+from plots.plot_utils import (
+    prepare_labels,
+    PLOT_FIGSIZE,
+    PLOT_TITLE_FONTSIZE,
+    PLOT_TITLE_PAD,
+    PLOT_AXIS_LABEL_FONTSIZE,
+    PLOT_TICK_LABELSIZE,
+    PLOT_LEGEND_FONTSIZE,
+)
 
-# #region agent log
-def _debug_log(location, message, data, hypothesis_id):
-    try:
-        log_path = "/Users/lucas/Code/gt-voting/.cursor/debug.log"
-        with open(log_path, "a") as f:
-            f.write(json.dumps({"location": location, "message": message, "data": data, "timestamp": __import__("time").time() * 1000, "sessionId": "debug-session", "runId": "run1", "hypothesisId": hypothesis_id}) + "\n")
-    except: pass
-# #endregion
 
 
 def plot_proportions(
@@ -27,7 +27,10 @@ def plot_proportions(
     mechanism="pairwise_majority",
     ax=None,
     title=None,
-    show_integers=False
+    show_integers=False,
+    use_time_average=False,
+    p_history=None,
+    p_avg_history=None
 ):
     """
     Plot probability distributions as a stacked area chart (proportion plot).
@@ -47,6 +50,14 @@ def plot_proportions(
         ax: Optional matplotlib axes. If None, creates a new figure.
         title: Optional title for the plot. If None, uses default title.
         show_integers: If True and candidates are integers, display them as integers in legend
+        use_time_average: If True and p_avg_history is provided, plot time-averaged outcomes \\hat{p}^t
+                         instead of instantaneous outcomes p^t (default: False)
+        p_history: Optional numpy array of shape [T, m] containing instantaneous outcomes p^t.
+                    If provided and use_time_average=False, will be used directly instead of computing
+                    from strategies. Only used for strategic reports mode.
+        p_avg_history: Optional numpy array of shape [T, m] containing time-averaged outcomes \\hat{p}^t.
+                       If provided and use_time_average=True, will be used directly. Only used for
+                       strategic reports mode.
     
     Returns:
         The matplotlib axes object containing the plot
@@ -60,10 +71,14 @@ def plot_proportions(
         >>> strategies = np.array([[0, 1, 2], [1, 0, 2]])  # 2 voters, 3 time steps
         >>> all_rankings = generate_rankings(3)
         >>> plot_proportions(strategies, m=3, all_rankings=all_rankings)
+        
+        >>> # With time-averaged outcomes
+        >>> plot_proportions(strategies, m=3, all_rankings=all_rankings, 
+        ...                  use_time_average=True, p_avg_history=p_avg_history)
     """
     # Initialize figure if needed
     if ax is None:
-        fig, ax = plt.subplots(figsize=(12, 8))
+        fig, ax = plt.subplots(figsize=PLOT_FIGSIZE)
     
     # Determine if input is single election (list) or strategic reports (array)
     is_strategic_reports = isinstance(reported_rankings_or_strategies, np.ndarray)
@@ -87,18 +102,79 @@ def plot_proportions(
         candidates = list(first_ranking)
         m = len(candidates)
         
-        # For each time step, extract rankings and aggregate
-        time_steps = []
-        probabilities_over_time = []
-        
-        for t in range(n_timesteps):
-            # Extract rankings for this time step
-            rankings_at_t = [all_rankings[strategies[i, t]] for i in range(n_voters)]
+        # Determine if we should use precomputed outcomes or compute from strategies
+        use_precomputed = False
+        if use_time_average and p_avg_history is not None:
+            # p_avg_history is computed with GT mechanism during strategy evolution
+            # If user wants GT mechanism, we can use p_avg_history directly (more efficient)
+            # Otherwise, we need to recompute from strategies using the user's mechanism
+            if mechanism.upper() == "GT":
+                # Use precomputed time-averaged outcomes (computed with GT mechanism)
+                # p_avg_history has shape [T, m] for t=1..T (doesn't include t=0)
+                # We need to compute t=0 from strategies and prepend it
+                rankings_at_t0 = [all_rankings[strategies[i, 0]] for i in range(n_voters)]
+                probs_t0 = aggregate_rankings(rankings_at_t0, mechanism=mechanism)
+                # Prepend t=0 to p_avg_history
+                probabilities_over_time = [probs_t0] + p_avg_history.tolist()
+                # Time steps: t=0 to t=T (where T is the last index in p_avg_history)
+                time_steps = list(range(len(probabilities_over_time)))
+                use_precomputed = True
+            else:
+                # User wants different mechanism, so compute time-averaged outcomes from strategies
+                time_steps = []
+                probabilities_over_time = []
+                p_sum = np.zeros(m, dtype=float)  # Accumulator for time-averaging
+                
+                # Start from t=0
+                for t in range(n_timesteps):
+                    # Extract rankings for this time step
+                    rankings_at_t = [all_rankings[strategies[i, t]] for i in range(n_voters)]
+                    
+                    # Aggregate to get probabilities using user's specified mechanism
+                    probs = aggregate_rankings(rankings_at_t, mechanism=mechanism)
+                    probs_array = np.array(probs)
+                    
+                    
+                    if t == 0:
+                        # For t=0, just use the instantaneous outcome (no averaging yet)
+                        probabilities_over_time.append(probs_array)
+                        time_steps.append(t)
+                    else:
+                        # For t>=1, accumulate and compute time-averaged outcome
+                        # \hat{p}^t = (1/t) * sum_{tau=1}^t p^tau
+                        p_sum += probs_array
+                        p_avg = p_sum / t
+                        probabilities_over_time.append(p_avg)
+                        time_steps.append(t)
+                
+                use_precomputed = True
             
-            # Aggregate to get probabilities
-            probs = aggregate_rankings(rankings_at_t, mechanism=mechanism)
-            probabilities_over_time.append(probs)
-            time_steps.append(t)
+            # Mark as precomputed to avoid falling through to the non-precomputed path
+            use_precomputed = True
+        elif not use_time_average and p_history is not None:
+            # NOTE: p_history contains probabilities from SAMPLED rankings during evolution,
+            # but the console prints probabilities from MOST LIKELY rankings (argmax).
+            # To match the console output, we should compute from strategies (most likely rankings)
+            # instead of using p_history. So we fall through to compute from strategies.
+            # NOTE: p_history contains probabilities from SAMPLED rankings during evolution,
+            # but the console prints probabilities from MOST LIKELY rankings (argmax).
+            # To match the console output, we should compute from strategies (most likely rankings)
+            # instead of using p_history. So we fall through to compute from strategies.
+            use_precomputed = False  # Force computation from strategies to match console output
+        
+        if not use_precomputed:
+            # For each time step, extract rankings and aggregate
+            time_steps = []
+            probabilities_over_time = []
+            
+            for t in range(n_timesteps):
+                # Extract rankings for this time step
+                rankings_at_t = [all_rankings[strategies[i, t]] for i in range(n_voters)]
+                
+                # Aggregate to get probabilities
+                probs = aggregate_rankings(rankings_at_t, mechanism=mechanism)
+                probabilities_over_time.append(probs)
+                time_steps.append(t)
         
         x_axis = np.array(time_steps)
         x_label = "Time Step (t)"
@@ -117,10 +193,8 @@ def plot_proportions(
         
         # Aggregate to get probabilities
         probs = aggregate_rankings(reported_rankings, mechanism=mechanism)
-        _debug_log("plot_proportions.py:109", "Single election probs calculated", {"probs": probs.tolist() if hasattr(probs, 'tolist') else list(probs), "len": len(probs)}, "H3")
         probabilities_over_time = [probs]
         x_axis = np.array([0])  # Single time point
-        _debug_log("plot_proportions.py:111", "Single election x_axis", {"x_axis": x_axis.tolist(), "shape": x_axis.shape}, "H2")
         x_label = "Election"
     
     # Prepare labels
@@ -155,83 +229,80 @@ def plot_proportions(
     # Convert probabilities_over_time to numpy array for easier manipulation
     # Shape: [n_timesteps, candidates]
     prob_array = np.array(probabilities_over_time)
-    _debug_log("plot_proportions.py:144", "Prob array before plotting", {"prob_array": prob_array.tolist(), "shape": prob_array.shape, "x_axis": x_axis.tolist(), "is_strategic": is_strategic_reports}, "H3")
     
     # Create colors for candidates (using rainbow colormap)
     colors = create_candidate_colormap(m)
-    _debug_log("plot_proportions.py:147", "Colors created", {"colors": colors, "m": m}, "H5")
     
-    # For single election, use stacked bar chart; for strategic reports, use stacked area chart
+    # Use stacked bar chart for both single election and strategic reports
     if is_strategic_reports:
-        # Create stacked area chart for multiple time steps
-        stackplot_data = [prob_array[:, i] for i in range(m)]
-        _debug_log("plot_proportions.py:152", "Stackplot data prepared", {"num_series": len(stackplot_data), "series_lengths": [len(s) for s in stackplot_data]}, "H2")
-        ax.stackplot(
-            x_axis,
-            *stackplot_data,
-            labels=legend_labels,
-            colors=colors,
-            alpha=0.7,
-            edgecolors='white',
-            linewidths=0.5
-        )
-        _debug_log("plot_proportions.py:159", "Stackplot called", {"x_axis_len": len(x_axis)}, "H2")
+        # Create stacked bar chart for multiple time steps
+        for t_idx, t in enumerate(x_axis):
+            probs = prob_array[t_idx]  # Probabilities for this time step
+            bottom = 0
+            for i in range(m):
+                # Only add label for first time step to avoid duplicate legend entries
+                label = legend_labels[i] if t_idx == 0 else None
+                bar_height = probs[i]
+                ax.bar(t, bar_height, bottom=bottom, label=label, color=colors[i], alpha=0.7, edgecolor='white', linewidth=0.5)
+                bottom += bar_height
     else:
         # Create stacked bar chart for single election
         probs = prob_array[0]  # Single row of probabilities
-        _debug_log("plot_proportions.py:163", "Single election bar chart", {"probs": probs.tolist(), "x_pos": 0}, "H2")
         bottom = 0
         for i in range(m):
             ax.bar(0, probs[i], bottom=bottom, label=legend_labels[i], color=colors[i], alpha=0.7, edgecolor='white', linewidth=0.5)
             bottom += probs[i]
-        _debug_log("plot_proportions.py:168", "Bar chart created", {"bars_created": m}, "H2")
     
     # Configure axes
-    ax.set_xlabel(x_label, fontsize=18)
-    ax.set_ylabel("Probability", fontsize=18)
+    ax.set_xlabel(x_label, fontsize=PLOT_AXIS_LABEL_FONTSIZE)
+    ax.set_ylabel("Probability", fontsize=PLOT_AXIS_LABEL_FONTSIZE)
     ax.set_ylim(0, 1)
-    ax.tick_params(axis='both', which='major', labelsize=15)
+    ax.tick_params(axis='both', which='major', labelsize=PLOT_TICK_LABELSIZE)
     
-    # Set x-axis ticks and limits (tight from 0 to T)
+    # Set x-axis ticks and limits (with proper padding for bars)
     if is_strategic_reports:
         ax.set_xticks(x_axis)
-        # Set tight x-axis limits from 0 to T (last time step)
-        ax.set_xlim(0, x_axis[-1])
+        # Set x-axis limits with padding to show full bars
+        # Bars are centered on time steps, default width is 0.8, so they extend ±0.4
+        # Add padding of 0.5 on each side to show full bars
+        x_min = x_axis[0] - 0.5
+        x_max = x_axis[-1] + 0.5
+        ax.set_xlim(x_min, x_max)
     else:
         ax.set_xticks([0])
         ax.set_xticklabels(["Election"])
         # For single election, set tight limits around the single point
         ax.set_xlim(-0.05, 0.05)
-        _debug_log("plot_proportions.py:175", "Single election xlim set", {"xlim": ax.get_xlim(), "x_axis": x_axis.tolist()}, "H1")
-        _debug_log("plot_proportions.py:175", "Single election ylim", {"ylim": ax.get_ylim()}, "H4")
     
     # Add grid
     ax.grid(True, alpha=0.3, linestyle='--')
     
-    # Add legend
-    ax.legend(loc='upper right', framealpha=0.9, fontsize=15)
-    
-    # Final axis state check
-    _debug_log("plot_proportions.py:180", "Final axis state", {"xlim": ax.get_xlim(), "ylim": ax.get_ylim(), "has_data": len(ax.patches) > 0 or len(ax.collections) > 0, "patches": len(ax.patches), "collections": len(ax.collections)}, "H4")
+    # Add legend outside the plot area
+    ax.legend(bbox_to_anchor=(1.0, 1.0), loc='upper left', framealpha=0.9, fontsize=PLOT_LEGEND_FONTSIZE)
     
     # Set title
     if title is None:
         if is_strategic_reports:
+            outcome_type = "Time-Averaged" if use_time_average else "Instantaneous"
             ax.set_title(
-                f"Probability Distribution Evolution\n({n_voters} voters, {m} candidates, {n_timesteps} time steps)",
-                fontsize=21,
+                f"{outcome_type} Probability Distribution Evolution\n({n_voters} voters, {m} candidates, {len(time_steps)} time steps)",
+                fontsize=PLOT_TITLE_FONTSIZE,
                 fontweight='bold',
-                pad=20
+                pad=PLOT_TITLE_PAD
             )
         else:
             ax.set_title(
                 f"Probability Distribution\n({len(reported_rankings)} voters, {m} candidates)",
-                fontsize=21,
+                fontsize=PLOT_TITLE_FONTSIZE,
                 fontweight='bold',
-                pad=20
+                pad=PLOT_TITLE_PAD
             )
     else:
-        ax.set_title(title, fontsize=21, fontweight='bold', pad=20)
+        ax.set_title(title, fontsize=PLOT_TITLE_FONTSIZE, fontweight='bold', pad=PLOT_TITLE_PAD)
+    
+    # Adjust layout to ensure legend is visible when placed outside
+    fig = ax.figure
+    fig.tight_layout()
     
     return ax
 

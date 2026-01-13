@@ -14,6 +14,7 @@ def generate_strategic_reports(
     anchor_strength=0.1,
     learning_rate=0.2,
     sharpness=3.0,
+    use_expected_score=False,
     # SimilarityStrategy parameters (for backward compatibility)
     distance_metric="spearman",
     # Graph topology
@@ -27,7 +28,8 @@ def generate_strategic_reports(
     
     Args:
         honest_reports: List of ranking tuples (baseline honest reports), one per voter
-        T: Number of iterations (time steps)
+        T: Number of iterations (time steps 1..T), with t=0 being the initial state.
+           Total time steps tracked: T+1 (t=0 to t=T inclusive)
         m: Number of candidates
         seed: Random seed for reproducibility (used if rng is None)
         rng: Optional numpy Generator (if None, creates new one from seed)
@@ -42,6 +44,9 @@ def generate_strategic_reports(
         sharpness: Sharpness parameter (>0) for GTStrategy, controls exploration vs exploitation.
                   Higher sharpness = more exploitation (sharper distribution, more focused)
                   Lower sharpness = more exploration (flatter distribution, more random) (default: 3.0)
+        use_expected_score: If True, use expected-score variant where realized neighbor rankings
+                  are replaced by their mixed strategies, yielding deterministic dynamics.
+                  If False (default), use sampled rankings. Only used by GTStrategy.
         distance_metric: Name of distance metric for SimilarityStrategy (default: "spearman")
                          Available: "spearman", "kendall_tau"
         graph: Optional igraph.Graph object defining social network topology.
@@ -52,9 +57,10 @@ def generate_strategic_reports(
         dict with at least the following key:
             "reports": numpy array of shape [n, T+1] where:
                 - n is the number of voters
-                - Column 0 contains honest reports (initial state)
-                - Columns 1..T contain evolved reports at each iteration
+                - Column 0 (t=0) contains honest reports (initial state)
+                - Columns 1..T (t=1..T) contain evolved reports at each iteration
                 - Each cell contains a ranking index (position in all_rankings)
+                - Total time steps: T+1 (t=0 to t=T inclusive)
 
         For GTStrategy, additional keys may be present, including:
             "selected_probs": numpy array of shape [n, T+1] giving, for each
@@ -77,7 +83,8 @@ def generate_strategic_reports(
             strategy, 
             anchor_strength=anchor_strength, 
             learning_rate=learning_rate, 
-            sharpness=sharpness
+            sharpness=sharpness,
+            use_expected_score=use_expected_score
         )
         # GTStrategy doesn't use distance_metric in generate_reports
         result = strategy_instance.generate_reports(

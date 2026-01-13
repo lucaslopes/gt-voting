@@ -3,7 +3,18 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-from plots.plot_utils import prepare_labels, create_rainbow_colormap, create_ranking_labels
+from plots.plot_utils import (
+    prepare_labels,
+    create_rainbow_colormap,
+    create_ranking_labels,
+    PLOT_FIGSIZE,
+    PLOT_TITLE_FONTSIZE,
+    PLOT_TITLE_PAD,
+    PLOT_AXIS_LABEL_FONTSIZE,
+    PLOT_TICK_LABELSIZE,
+    PLOT_LEGEND_FONTSIZE,
+    PLOT_COLORBAR_TICK_LABELSIZE,
+)
 
 
 def plot_voter_strategies(
@@ -47,7 +58,7 @@ def plot_voter_strategies(
     """
     # Initialize figure if needed
     if ax is None:
-        fig, ax = plt.subplots(figsize=(12, 8))
+        fig, ax = plt.subplots(figsize=PLOT_FIGSIZE)
     
     # Validate input shapes
     if strategies.ndim != 2:
@@ -57,7 +68,7 @@ def plot_voter_strategies(
     n_rankings = len(rankings)
     
     if n_rankings == 0:
-        ax.text(0.5, 0.5, "No rankings provided", ha='center', va='center', fontsize=21)
+        ax.text(0.5, 0.5, "No rankings provided", ha='center', va='center', fontsize=PLOT_TITLE_FONTSIZE)
         ax.axis('off')
         return ax
     
@@ -118,17 +129,19 @@ def plot_voter_strategies(
     )
     
     # Configure axes
-    ax.set_xlabel("Time Step (t)", fontsize=18)
-    ax.set_ylabel("Voter Index", fontsize=18)
+    ax.set_xlabel("Time Step (t)", fontsize=PLOT_AXIS_LABEL_FONTSIZE)
+    ax.set_ylabel("Voter Index", fontsize=PLOT_AXIS_LABEL_FONTSIZE)
     ax.set_yticks(range(n_voters))
-    ax.tick_params(axis='both', which='major', labelsize=15)
+    # Set x-axis ticks to show t=0 to t=T-1
+    ax.set_xticks(range(n_timesteps))
+    ax.tick_params(axis='both', which='major', labelsize=PLOT_TICK_LABELSIZE)
     
     # Set title
     if title is None:
         ax.set_title(f"Voter Strategy Evolution ({n_voters} voters, {n_timesteps} total number of time steps)", 
-                    fontsize=21, fontweight='bold', pad=20)
+                    fontsize=PLOT_TITLE_FONTSIZE, fontweight='bold', pad=PLOT_TITLE_PAD)
     else:
-        ax.set_title(title, fontsize=21, fontweight='bold', pad=20)
+        ax.set_title(title, fontsize=PLOT_TITLE_FONTSIZE, fontweight='bold', pad=PLOT_TITLE_PAD)
     
     # Add colorbar using a scalar mappable so that the colorbar reflects
     # the ranking index → hue mapping, independent of per-cell saturation
@@ -136,8 +149,12 @@ def plot_voter_strategies(
     mappable = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
     mappable.set_array([])
     cbar = plt.colorbar(mappable, ax=ax, ticks=tick_locs, boundaries=bounds)
-    cbar.ax.set_yticklabels(perm_labels, fontsize=15)
+    cbar.ax.set_yticklabels(perm_labels, fontsize=PLOT_COLORBAR_TICK_LABELSIZE)
     cbar.ax.invert_yaxis()  # Put the first ranking at the top
-    cbar.set_label("Reported Ranking", fontsize=17)
+    cbar.set_label("Reported Ranking", fontsize=PLOT_LEGEND_FONTSIZE)
+    
+    # Adjust layout to ensure consistent spacing
+    fig = ax.figure
+    fig.tight_layout()
     
     return ax
