@@ -3,6 +3,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+from matplotlib.patches import Patch
 import json
 import os
 from core.aggregator_core import aggregate_rankings
@@ -250,18 +251,22 @@ class ProportionsPlot(BasePlot):
             for t_idx, t in enumerate(x_axis):
                 probs = prob_array[t_idx]  # Probabilities for this time step
                 bottom = 0
-                for i in range(m):
-                    # Only add label for first time step to avoid duplicate legend entries
-                    label = legend_labels[i] if t_idx == 0 else None
+                # Plot candidates in reverse order so that the last candidate
+                # (e.g., C) is closest to the x-axis and the first (e.g., A) is on top
+                for i in reversed(range(m)):
                     bar_height = probs[i]
-                    ax.bar(t, bar_height, bottom=bottom, label=label, color=colors[i], alpha=0.7, edgecolor='none', linewidth=0, width=1.0)
+                    # Do not pass labels here; we construct a custom legend below
+                    ax.bar(t, bar_height, bottom=bottom, color=colors[i], alpha=0.7, edgecolor='none', linewidth=0, width=1.0)
                     bottom += bar_height
         else:
             # Create stacked bar chart for single election
             probs = prob_array[0]  # Single row of probabilities
             bottom = 0
-            for i in range(m):
-                ax.bar(0, probs[i], bottom=bottom, label=legend_labels[i], color=colors[i], alpha=0.7, edgecolor='none', linewidth=0)
+            # Plot candidates in reverse order so that the last candidate
+            # (e.g., C) is closest to the x-axis and the first (e.g., A) is on top
+            for i in reversed(range(m)):
+                # Do not pass labels here; we construct a custom legend below
+                ax.bar(0, probs[i], bottom=bottom, color=colors[i], alpha=0.7, edgecolor='none', linewidth=0)
                 bottom += probs[i]
         
         # Configure axes
@@ -308,8 +313,26 @@ class ProportionsPlot(BasePlot):
         # Grid disabled
         ax.grid(False)
         
-        # Add legend outside the plot area
-        ax.legend(bbox_to_anchor=(1.0, 1.0), loc='upper left', framealpha=0.9, fontsize=self.PLOT_LEGEND_FONTSIZE)
+        # Build explicit legend proxy patches so colors are independent of bar drawing order.
+        legend_patches = [
+            Patch(facecolor=colors[i], edgecolor="none", label=legend_labels[i])
+            for i in range(m)
+        ]
+
+        ax.legend(
+            handles=legend_patches,
+            labels=legend_labels,
+            # Slightly outside the right edge and a bit below the top for nicer spacing.
+            bbox_to_anchor=(1.03, 1.035),
+            loc="upper left",
+            title="Candidates",
+            framealpha=0.9,
+            fontsize=self.PLOT_LEGEND_FONTSIZE,
+            borderpad=0.8,
+            columnspacing=2.0,
+            handlelength=2.6,
+            handletextpad=0.8,
+        )
         
         # Set title
         if title is None:

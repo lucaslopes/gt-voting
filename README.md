@@ -28,6 +28,20 @@ uv run python -m cli.proportions_cli [options]
 uv run python -m cli.ternary_cli [options]
 ```
 
+### Cached runs (speeding up repeated plots)
+
+Many commands run expensive simulations before plotting. Results are now cached on disk under:
+
+- `data/*_runs/` (e.g. `data/dashboard_runs/`, `data/phase_transition_runs/`, `data/ternary_runs/`, etc.)
+
+On repeat runs with the **same parameters**, the CLI will load cached results instead of recomputing, and it will print a line like:
+
+- `[cache] <command> hit: <path>`
+
+To ignore the cache and recompute, add:
+
+- `--force-recompute`
+
 ### Command: `rankings`
 
 Generate and display all possible candidate rankings for a given number of candidates.

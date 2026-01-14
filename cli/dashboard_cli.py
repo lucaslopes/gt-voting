@@ -4,6 +4,13 @@ import argparse
 import matplotlib.pyplot as plt
 from core.honest_reports import parse_baselines
 from core.dashboard_core import run_dashboard_simulation
+from core.cache_utils import (
+    DashboardParams,
+    normalize_baselines_str,
+    load_dashboard_cache,
+    save_dashboard_cache,
+    get_dashboard_run_path,
+)
 from plots.plot_dashboard import plot_dashboard
 from plots.BasePlot import BasePlot
 
@@ -126,6 +133,12 @@ Examples:
         action="store_true",
         help="Export the plot as a high-quality PDF file"
     )
+    parser.add_argument(
+        "--force-recompute",
+        action="store_true",
+        dest="force_recompute",
+        help="Ignore any cached results and recompute simulations"
+    )
     
     args = parser.parse_args(args)
     
@@ -161,16 +174,37 @@ Examples:
     
     # Generate plot
     if args.plot or args.save:
-        # Run simulation
-        data = run_dashboard_simulation(
+        cache_params = DashboardParams(
             n=n,
             m=args.m,
             seed=args.seed,
-            baselines=baselines,
-            eta=args.learning_rate,
-            beta=args.sharpness,
             T=args.T,
+            learning_rate=args.learning_rate,
+            sharpness=args.sharpness,
+            baselines=normalize_baselines_str(args.baselines) if args.baselines else None,
         )
+
+        data = None
+        if not args.force_recompute:
+            data, _metadata = load_dashboard_cache(cache_params)
+            if data is not None:
+                run_dir = get_dashboard_run_path(cache_params)
+                print(f"[cache] dashboard hit: {run_dir}")
+
+        if data is None:
+            run_dir = get_dashboard_run_path(cache_params)
+            print(f"[cache] dashboard miss: {run_dir}")
+            # Run simulation
+            data = run_dashboard_simulation(
+                n=n,
+                m=args.m,
+                seed=args.seed,
+                baselines=baselines,
+                eta=args.learning_rate,
+                beta=args.sharpness,
+                T=args.T,
+            )
+            save_dashboard_cache(cache_params, data)
         
         # Create dashboard plot
         fig = plot_dashboard(data=data, n=n, m=args.m, seed=args.seed)

@@ -1,5 +1,11 @@
 import argparse
 from core.rankings_core import generate_rankings
+from core.cache_utils import (
+    load_cached_run,
+    save_cached_run,
+    RANKINGS_CACHE_SCHEMA_VERSION,
+    get_run_path,
+)
 from plots.plot_rankings import plot_rankings_list
 from plots.BasePlot import BasePlot
 import matplotlib.pyplot as plt
@@ -81,6 +87,12 @@ Examples:
         default='auto',
         help="Layout style for the plot: 'horizontal' (single row), 'vertical' (single column), 'matrix' (grid), or 'auto' (default, chooses based on number of rankings)"
     )
+    parser.add_argument(
+        "--force-recompute",
+        action="store_true",
+        dest="force_recompute",
+        help="Ignore any cached results and recompute rankings"
+    )
     
     args = parser.parse_args(args)
     
@@ -91,8 +103,33 @@ Examples:
     if args.m < 1:
         parser.error("Number of candidates must be at least 1")
     
-    # Generate and print rankings
-    rankings = generate_rankings(args.m, alphabetical=args.alphabetical)
+    cache_params = {"m": int(args.m), "alphabetical": bool(args.alphabetical)}
+    cache_prefix_parts = ["rankings", f"m{args.m}", "alpha" if args.alphabetical else "int"]
+    cached = None
+    if not args.force_recompute:
+        cached, _meta = load_cached_run(
+            command="rankings",
+            params=cache_params,
+            prefix_parts=cache_prefix_parts,
+            schema_version=RANKINGS_CACHE_SCHEMA_VERSION,
+        )
+        if cached is not None:
+            run_dir = get_run_path(command="rankings", params=cache_params, prefix_parts=cache_prefix_parts)
+            print(f"[cache] rankings hit: {run_dir}")
+
+    if cached is None:
+        run_dir = get_run_path(command="rankings", params=cache_params, prefix_parts=cache_prefix_parts)
+        print(f"[cache] rankings miss: {run_dir}")
+        rankings = generate_rankings(args.m, alphabetical=args.alphabetical)
+        save_cached_run(
+            command="rankings",
+            params=cache_params,
+            prefix_parts=cache_prefix_parts,
+            schema_version=RANKINGS_CACHE_SCHEMA_VERSION,
+            data={"rankings": rankings},
+        )
+    else:
+        rankings = cached["rankings"]
     
     for ranking in rankings:
         print(ranking)

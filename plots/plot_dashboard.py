@@ -43,17 +43,20 @@ class DashboardPlot(BasePlot):
         # Create 2×2 grid for 4 quadrants
         # Set spacing parameters from manual adjustment
         gs = fig.add_gridspec(2, 2, hspace=0.6, wspace=0.24)
+
+        def _fmt_trim(x, max_decimals=3):
+            """Format with up to max_decimals, trimming trailing zeros (e.g. 0.500 -> 0.5)."""
+            try:
+                s = f"{float(x):.{max_decimals}f}"
+            except (TypeError, ValueError):
+                return str(x)
+            return s.rstrip("0").rstrip(".")
         
         alphas = data["alphas"]
         dists = data["dists"]
         threshold_alpha = data["threshold_alpha"]
         alpha_before = data["alpha_before"]
         alpha_after = data["alpha_after"]
-        
-        # #region agent log
-        with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
-            f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"K","location":"plot_dashboard.py:51","message":"Plot function received values","data":{{"threshold_alpha":{threshold_alpha},"alpha_before":{alpha_before},"alpha_after":{alpha_after},"alpha_before_rounded":{round(alpha_before, 3) if alpha_before is not None else None},"alpha_after_rounded":{round(alpha_after, 3) if alpha_after is not None else None},"threshold_rounded":{round(threshold_alpha, 3) if threshold_alpha is not None else None}}}}}\n')
-        # #endregion
         strategies = data["heatmap"]["strategies"]
         perms = data["heatmap"]["perms"]
         traj = data["heatmap"]["traj"]
@@ -77,7 +80,7 @@ class DashboardPlot(BasePlot):
         # Compute and plot dynamic threshold
         if threshold_warped is not None:
             ax_phase.axvline(x=threshold_warped, color='gray', linestyle='--', alpha=0.5, 
-                             label=f'Threshold α≈{threshold_alpha:.3f}')
+                             label=f"Threshold α≈{_fmt_trim(threshold_alpha)}")
         
         ax_phase.set_title(f"(a) Phase Transition: Anchoring vs. Fairness", fontsize=self.PLOT_TITLE_FONTSIZE, fontweight='bold', pad=self.PLOT_TITLE_PAD)
         ax_phase.set_xlabel(r"Anchoring Parameter ($\alpha$)", fontsize=self.PLOT_AXIS_LABEL_FONTSIZE)
@@ -97,7 +100,7 @@ class DashboardPlot(BasePlot):
             tick_positions_warped = warp_alpha_axis(tick_alphas_original, threshold_alpha, power=warp_power)
             # Labels show original alpha values
             ax_phase.set_xticks(tick_positions_warped)
-            ax_phase.set_xticklabels([f'{a:.2f}' for a in tick_alphas_original])
+            ax_phase.set_xticklabels([_fmt_trim(a) for a in tick_alphas_original])
         
         # B. Strategy Heatmap (Top Right Quadrant)
         ax_heat = fig.add_subplot(gs[0, 1])
@@ -106,7 +109,7 @@ class DashboardPlot(BasePlot):
             perms,
             labels=labels,
             ax=ax_heat,
-            title=rf"(d) Voter Strategy Evolution $\alpha={data['heatmap']['alpha']:.3f}$",
+            title=rf"(d) Voter Strategy Evolution $\alpha={_fmt_trim(data['heatmap']['alpha'])}$",
             title_fontsize=self.PLOT_TITLE_FONTSIZE
         )
         
@@ -121,12 +124,17 @@ class DashboardPlot(BasePlot):
             # Ternary legend placement: single source of truth.
             # dx < 0 moves left; dy > 0 moves up (figure coordinates).
             ternary_legend_dx = -0.085
-            ternary_legend_dy = 0.05
+            ternary_legend_dy = 0.12
+
+            # Gap between the two ternary plots (figure coordinates).
+            # Increasing this will reduce each plot's width to keep them inside the bottom-left quadrant,
+            # but the two triangles will remain identically scaled (widths allocated proportional to x-range).
+            ternary_gap = 0.05
 
             # Ternary top label/title spacing: single source of truth.
             # Increase these together to move both upward proportionally.
             ternary_top_label_dy = 0.00  # y offset above the top vertex (data coords)
-            ternary_title_pad = 34      # title padding (points)
+            ternary_title_pad = 22     # title padding (points)
 
             def _ternary_legend_anchor(ax_left, ax_right, dx, dy):
                 """Compute figure-coordinate anchor for the shared ternary legend."""
@@ -147,7 +155,7 @@ class DashboardPlot(BasePlot):
                 traj_before,
                 p_initial_baseline=p_initial_baseline,
                 labels=labels,
-                title=f"(b) Before Threshold\n$\\alpha={alpha_before:.3f}$",
+                title=f"(b) Before Threshold\n$\\alpha={_fmt_trim(alpha_before)}$",
                 show_instantaneous=True,
                 show_running_avg=True,
                 show_start=True,
@@ -168,7 +176,7 @@ class DashboardPlot(BasePlot):
                 traj_after,
                 p_initial_baseline=p_initial_baseline,
                 labels=labels,
-                title=f"(c) After Threshold\n$\\alpha={alpha_after:.3f}$",
+                title=f"(c) After Threshold\n$\\alpha={_fmt_trim(alpha_after)}$",
                 show_instantaneous=True,
                 show_running_avg=True,
                 show_start=True,
@@ -198,49 +206,50 @@ class DashboardPlot(BasePlot):
             tri_y_max = (sqrt3_half - center_y) * scale_factor + center_y  # ≈ 1.443
             # Calculate padding to accommodate labels (reduced to minimize blank space)
             x_pad = 0.08  # Reduced padding
-            x_pad_left = 0.2  # Minimal left padding for left plot to glue it to left margin
+            # Keep identical axes limits so the triangles render at identical scale.
+            # Horizontal "gluing" is handled later via set_position(...), not via asymmetric x-limits.
+            x_pad_left = 0.1
             # Provide enough headroom for the top label + title.
             y_pad_top = 0.10 + ternary_top_label_dy
             y_pad_bottom = 0.08  # Reduced padding for bottom labels
             
-            # Left plot: minimal left padding to glue to left margin
+            # Use identical x/y limits for both ternary plots (visual parity).
             ax_tern_before.set_xlim(tri_x_min - x_pad_left, tri_x_max + x_pad)
             ax_tern_before.set_ylim(tri_y_min - y_pad_bottom, tri_y_max + y_pad_top)
             
-            # Right plot: keep normal padding
             ax_tern_after.set_xlim(tri_x_min - x_pad, tri_x_max + x_pad)
             ax_tern_after.set_ylim(tri_y_min - y_pad_bottom, tri_y_max + y_pad_top)
             
             # Reposition labels to avoid overlap
             # Put the top candidate label further above the triangle to avoid collision with title
-            ax_tern_before.text(center_x, tri_y_max + ternary_top_label_dy, f'Cand {labels[0]}', ha='center',
+            ax_tern_before.text(center_x, tri_y_max + ternary_top_label_dy, f'{labels[0]}', ha='center',
                                fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='bottom')
-            ax_tern_after.text(center_x, tri_y_max + ternary_top_label_dy, f'Cand {labels[0]}', ha='center',
+            ax_tern_after.text(center_x, tri_y_max + ternary_top_label_dy, f'{labels[0]}', ha='center',
                               fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='bottom')
 
             # Re-apply title with explicit padding (plot_single_ternary sets a title without pad).
             ax_tern_before.set_title(
-                f"(b) Before Threshold\n$\\alpha={alpha_before:.3f}$",
+                f"(b) Before Threshold\n$\\alpha={_fmt_trim(alpha_before)}$",
                 fontsize=self.PLOT_TITLE_FONTSIZE,
                 fontweight="bold",
                 pad=ternary_title_pad,
             )
             ax_tern_after.set_title(
-                f"(c) After Threshold\n$\\alpha={alpha_after:.3f}$",
+                f"(c) After Threshold\n$\\alpha={_fmt_trim(alpha_after)}$",
                 fontsize=self.PLOT_TITLE_FONTSIZE,
                 fontweight="bold",
                 pad=ternary_title_pad,
             )
             
             # Bottom labels: position relative to scaled triangle bottom vertices
-            ax_tern_before.text(tri_x_max + 0.05, tri_y_min - 0.12, f'Cand {labels[1]}', ha='center', 
+            ax_tern_before.text(tri_x_max + 0.05, tri_y_min - 0.12, f'{labels[1]}', ha='center', 
                                fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='top')
-            ax_tern_before.text(tri_x_min - 0.05, tri_y_min - 0.12, f'Cand {labels[2]}', ha='center', 
+            ax_tern_before.text(tri_x_min - 0.05, tri_y_min - 0.12, f'{labels[2]}', ha='center', 
                                fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='top')
             
-            ax_tern_after.text(tri_x_max + 0.05, tri_y_min - 0.12, f'Cand {labels[1]}', ha='center', 
+            ax_tern_after.text(tri_x_max + 0.05, tri_y_min - 0.12, f'{labels[1]}', ha='center', 
                               fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='top')
-            ax_tern_after.text(tri_x_min - 0.05, tri_y_min - 0.12, f'Cand {labels[2]}', ha='center', 
+            ax_tern_after.text(tri_x_min - 0.05, tri_y_min - 0.12, f'{labels[2]}', ha='center', 
                               fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='top')
             
             # Expand ternary plots vertically to use more of the available space
@@ -288,23 +297,13 @@ class DashboardPlot(BasePlot):
         # Plot proportions using the trajectory from the heatmap (GT mechanism)
         # This ensures consistency with phase transition plot which also uses GT mechanism
         traj_heatmap = data["heatmap"].get("traj")
+        # Subplot (e) title horizontal alignment (x in axes coords: 0=left, 0.5=center, 1=right)
+        e_title_x = 0.53
         if traj_heatmap is not None and strategies is not None and perms is not None:
             # Use trajectory directly (GT mechanism) instead of recomputing from strategies
             # traj_heatmap has shape [T, m] where T is number of time steps after burn-in
             # strategies should also have shape [n, T] to match
-            # #region agent log
-            with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
-                traj_shape = traj_heatmap.shape if traj_heatmap is not None else None
-                strategies_shape = strategies.shape if strategies is not None else None
-                traj_first = list(traj_heatmap[0]) if traj_heatmap is not None and len(traj_heatmap) > 0 else None
-                traj_last = list(traj_heatmap[-1]) if traj_heatmap is not None and len(traj_heatmap) > 0 else None
-                center = np.array([1 / m] * m)
-                dist_first = float(np.linalg.norm(traj_heatmap[0] - center)) if traj_heatmap is not None and len(traj_heatmap) > 0 else None
-                dist_last = float(np.linalg.norm(traj_heatmap[-1] - center)) if traj_heatmap is not None and len(traj_heatmap) > 0 else None
-                dist_avg_first_50 = float(np.linalg.norm(np.mean(traj_heatmap[:50], axis=0) - center)) if traj_heatmap is not None and len(traj_heatmap) >= 50 else None
-                f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"T","location":"plot_dashboard.py:248","message":"Using trajectory for proportions plot","data":{{"traj_shape":{traj_shape},"strategies_shape":{strategies_shape},"traj_first":{traj_first},"traj_last":{traj_last},"dist_first":{dist_first},"dist_last":{dist_last},"dist_avg_first_50":{dist_avg_first_50},"alpha":{data["heatmap"]["alpha"]}}}}}\n')
-            # #endregion
-            
+            e_title = f"(e) Probability Distribution Evolution $\\alpha={_fmt_trim(data['heatmap']['alpha'])}$"
             plot_proportions(
                 strategies,
                 m=m,
@@ -312,15 +311,19 @@ class DashboardPlot(BasePlot):
                 labels=labels,
                 mechanism="pairwise_majority",  # Not used when p_history is provided
                 ax=ax_proportions,
-                title=f"(e) Probability Distribution Evolution $\\alpha={data['heatmap']['alpha']:.3f}$",
+                title=e_title,
                 p_history=traj_heatmap,  # Pass trajectory directly (GT mechanism)
+            )
+            ax_proportions.set_title(
+                e_title,
+                fontsize=self.PLOT_TITLE_FONTSIZE,
+                fontweight="bold",
+                pad=self.PLOT_TITLE_PAD,
+                x=e_title_x,
             )
         elif strategies is not None and perms is not None:
             # Fallback: compute from strategies if trajectory not available
-            # #region agent log
-            with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
-                f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"U","location":"plot_dashboard.py:268","message":"Fallback: computing from strategies","data":{{"alpha":{data["heatmap"]["alpha"]}}}}}\n')
-            # #endregion
+            e_title = f"(e) Probability Distribution Evolution $\\alpha={_fmt_trim(data['heatmap']['alpha'])}$"
             plot_proportions(
                 strategies,
                 m=m,
@@ -328,7 +331,14 @@ class DashboardPlot(BasePlot):
                 labels=labels,
                 mechanism="pairwise_majority",
                 ax=ax_proportions,
-                title=f"(e) Probability Distribution Evolution $\\alpha={data['heatmap']['alpha']:.3f}$",
+                title=e_title,
+            )
+            ax_proportions.set_title(
+                e_title,
+                fontsize=self.PLOT_TITLE_FONTSIZE,
+                fontweight="bold",
+                pad=self.PLOT_TITLE_PAD,
+                x=e_title_x,
             )
         else:
             ax_proportions.axis('off')
@@ -442,23 +452,6 @@ class DashboardPlot(BasePlot):
                 ax_heat.set_position([target_left, bbox_heat_after.y0, final_width, bbox_heat_after.height])
                 ax_proportions.set_position([target_left, bbox_proportions_after.y0, final_width, bbox_proportions_after.height])
             
-            # Adjust the legend position in proportions plot - position it further right to avoid overlap
-            legend = ax_proportions.get_legend()
-            if legend is not None:
-                # Remove the old legend
-                legend.remove()
-                # Create new legend positioned further right
-                handles, labels_legend = ax_proportions.get_legend_handles_labels()
-                # Position legend at figure right edge minus small margin to ensure it's outside plot
-                legend_x = figure_right_edge + 0.04  # Move further to the right
-                ax_proportions.legend(
-                    handles, labels_legend,
-                    bbox_to_anchor=(legend_x, 1.0),
-                    loc='upper left',
-                    framealpha=0.9,
-                    fontsize=self.PLOT_LEGEND_FONTSIZE
-                )
-            
             # Now adjust the colorbar position to align with the legend at right margin
             # Do this AFTER setting axes positions to ensure it doesn't get auto-adjusted
             if cbar is not None:
@@ -491,11 +484,11 @@ class DashboardPlot(BasePlot):
 
             target_y0 = 0.02  # "almost glued" to the bottom of the main figure (only ternary axes)
             # Preserve the current top edge; just slide the bottom down to target_y0.
-            new_height_final = max(0.01, bbox_before_final.y1 - target_y0)
+            new_height_final = max(0.01, max(bbox_before_final.y1, bbox_after_final.y1) - target_y0)
 
             # Horizontal repositioning: maximize separation within the bottom-left subplot region
-            # Variable to control spacing (for future flexibility, though we'll maximize it here)
-            ternary_horizontal_spacing = 0.0  # Minimum spacing between plots (can be increased if needed)
+            # User-tunable spacing between the two ternary axes (figure coordinates).
+            ternary_horizontal_spacing = max(0.0, float(ternary_gap))
             
             # Get the bounds of the bottom-left subplot region (gs[1, 0])
             # After subplots_adjust, get the actual position from the gridspec
@@ -505,29 +498,21 @@ class DashboardPlot(BasePlot):
             # Left margin of main figure - use a very small value to glue left plot to screen edge
             figure_left_margin = 0.02  # Almost glued to left edge of screen
             
-            # Preserve the widths
-            tern_before_width = bbox_before_final.width
-            tern_after_width = bbox_after_final.width
-            
-            # Position left ternary plot: left edge glued to figure's left margin (almost screen edge)
+            # Allocate widths proportional to x-range so both triangles render at the same scale
+            # under equal-aspect axes (scale ∝ axes_width / data_xrange).
+            xlim_before = ax_tern_before.get_xlim()
+            xlim_after = ax_tern_after.get_xlim()
+            xrange_before = float(xlim_before[1] - xlim_before[0])
+            xrange_after = float(xlim_after[1] - xlim_after[0])
+            denom = max(1e-12, xrange_before + xrange_after)
+
+            total_span = subplot_right_edge - figure_left_margin
+            total_width = max(0.01, total_span - ternary_horizontal_spacing)
+            tern_before_width = total_width * (xrange_before / denom)
+            tern_after_width = max(0.01, total_width - tern_before_width)
+
             tern_before_x0 = figure_left_margin
-            
-            # Position right ternary plot: right edge glued to subplot's right edge
-            tern_after_x1 = subplot_right_edge
-            tern_after_x0 = tern_after_x1 - tern_after_width
-            
-            # Ensure there's at least the minimum spacing between plots
-            if tern_after_x0 < tern_before_x0 + tern_before_width + ternary_horizontal_spacing:
-                # If plots would overlap, adjust: keep left plot at left margin, 
-                # and position right plot with minimum spacing
-                tern_after_x0 = tern_before_x0 + tern_before_width + ternary_horizontal_spacing
-                tern_after_x1 = tern_after_x0 + tern_after_width
-                # If this pushes the right plot beyond the subplot edge, shift both plots left
-                if tern_after_x1 > subplot_right_edge:
-                    excess = tern_after_x1 - subplot_right_edge
-                    tern_after_x0 -= excess
-                    tern_after_x1 -= excess
-                    tern_before_x0 -= excess
+            tern_after_x0 = tern_before_x0 + tern_before_width + ternary_horizontal_spacing
             
             # Apply new positions (vertical and horizontal)
             ax_tern_before.set_position([tern_before_x0, target_y0, tern_before_width, new_height_final])
@@ -627,21 +612,9 @@ class DashboardPlot(BasePlot):
                 legend_start_x_final = figure_right_edge - max_sidebar_width_final
                 cbar.ax.set_position([legend_start_x_final, bbox_heat_final.y0, cbar_width, bbox_heat_final.height])
                 
-                # Also reposition proportions legend to use same x position for consistency
-                # Position legend further right to avoid overlap with plot
-                if proportions_legend_final is not None:
-                    proportions_legend_final.remove()
-                    handles_final, labels_legend_final = ax_proportions.get_legend_handles_labels()
-                    # Position legend further right - use figure edge plus offset
-                    # This ensures the legend is clearly outside the plot area
-                    legend_x_final = figure_right_edge + 0.04  # Move further to the right
-                    ax_proportions.legend(
-                        handles_final, labels_legend_final,
-                        bbox_to_anchor=(legend_x_final, 1.0),
-                        loc='upper left',
-                        framealpha=0.9,
-                        fontsize=self.PLOT_LEGEND_FONTSIZE
-                    )
+                # Do not modify the proportions legend here; it is fully managed
+                # inside plot_proportions (including order and colors). We only
+                # reposition the colorbar at this stage.
         
         return fig
 

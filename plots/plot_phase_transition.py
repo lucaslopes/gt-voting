@@ -15,7 +15,7 @@ class PhaseTransitionPlot(BasePlot):
     
     def plot(self, n=15, m=3, eta=0.2, beta=3.0, seed=0, baselines=None,
              alpha_grid=None, ax=None, title=None, burn_in=200,
-             collection_steps=50, runs=10):
+             collection_steps=50, runs=10, phase_data=None):
         """
         Plot phase transition: distance from center (tie) vs anchoring parameter (α) with confidence intervals.
         
@@ -36,12 +36,23 @@ class PhaseTransitionPlot(BasePlot):
         Returns:
             The matplotlib figure object containing the plot
         """
-        # Run phase transition experiment
-        alphas, dists_mean, dists_std = run_phase_transition(
-            n=n, m=m, alpha_grid=alpha_grid, eta=eta, beta=beta, seed=seed, 
-            baselines=baselines, burn_in=burn_in, collection_steps=collection_steps, runs=runs
-        )
-        threshold_alpha = compute_threshold_alpha(alphas, dists_mean)
+        # Run phase transition experiment (or use cached data)
+        if phase_data is not None:
+            alphas = phase_data["alphas"]
+            dists_mean = phase_data["dists_mean"]
+            dists_std = phase_data.get("dists_std")
+            if dists_std is None:
+                # Ensure std exists (e.g., single-run caches)
+                dists_std = np.zeros_like(dists_mean, dtype=float)
+            threshold_alpha = phase_data.get("threshold_alpha")
+            if threshold_alpha is None:
+                threshold_alpha = compute_threshold_alpha(alphas, dists_mean)
+        else:
+            alphas, dists_mean, dists_std = run_phase_transition(
+                n=n, m=m, alpha_grid=alpha_grid, eta=eta, beta=beta, seed=seed, 
+                baselines=baselines, burn_in=burn_in, collection_steps=collection_steps, runs=runs
+            )
+            threshold_alpha = compute_threshold_alpha(alphas, dists_mean)
         
         # Create figure if needed
         if ax is None:

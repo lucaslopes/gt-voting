@@ -3,6 +3,14 @@
 import argparse
 import matplotlib.pyplot as plt
 from core.honest_reports import parse_baselines
+from core.phase_transition import run_phase_transition, compute_threshold_alpha
+from core.cache_utils import (
+    normalize_baselines_str,
+    load_cached_run,
+    save_cached_run,
+    PHASE_TRANSITION_CACHE_SCHEMA_VERSION,
+    get_run_path,
+)
 from plots.plot_phase_transition import plot_phase_transition
 from plots.BasePlot import BasePlot
 
@@ -144,6 +152,12 @@ Examples:
         action="store_true",
         help="Export the plot as a high-quality PDF file"
     )
+    parser.add_argument(
+        "--force-recompute",
+        action="store_true",
+        dest="force_recompute",
+        help="Ignore any cached results and recompute simulations"
+    )
     
     args = parser.parse_args(args)
     
@@ -181,6 +195,70 @@ Examples:
     
     # Generate plot
     if args.plot or args.save:
+        params = {
+            "n": int(n),
+            "m": int(args.m),
+            "seed": int(args.seed),
+            "baselines": normalize_baselines_str(args.baselines) if args.baselines else None,
+            "learning_rate": float(args.learning_rate),
+            "sharpness": float(args.sharpness),
+            "burn_in": int(args.burn_in),
+            "collection_steps": int(args.collection_steps),
+            "runs": int(args.runs),
+        }
+        prefix_parts = [
+            "phase_transition",
+            f"m{args.m}",
+            f"n{n}",
+            f"runs{args.runs}",
+            f"burn{args.burn_in}",
+            f"collect{args.collection_steps}",
+            f"lr{args.learning_rate}",
+            f"sh{args.sharpness}",
+            f"seed{args.seed}",
+        ]
+
+        phase_data = None
+        if not args.force_recompute:
+            phase_data, _meta = load_cached_run(
+                command="phase_transition",
+                params=params,
+                prefix_parts=prefix_parts,
+                schema_version=PHASE_TRANSITION_CACHE_SCHEMA_VERSION,
+            )
+            if phase_data is not None:
+                run_dir = get_run_path(command="phase_transition", params=params, prefix_parts=prefix_parts)
+                print(f"[cache] phase_transition hit: {run_dir}")
+
+        if phase_data is None:
+            run_dir = get_run_path(command="phase_transition", params=params, prefix_parts=prefix_parts)
+            print(f"[cache] phase_transition miss: {run_dir}")
+            alphas, dists_mean, dists_std = run_phase_transition(
+                n=n,
+                m=args.m,
+                eta=args.learning_rate,
+                beta=args.sharpness,
+                seed=args.seed,
+                baselines=baselines,
+                burn_in=args.burn_in,
+                collection_steps=args.collection_steps,
+                runs=args.runs,
+            )
+            threshold_alpha = compute_threshold_alpha(alphas, dists_mean)
+            phase_data = {
+                "alphas": alphas,
+                "dists_mean": dists_mean,
+                "dists_std": dists_std,
+                "threshold_alpha": threshold_alpha,
+            }
+            save_cached_run(
+                command="phase_transition",
+                params=params,
+                prefix_parts=prefix_parts,
+                schema_version=PHASE_TRANSITION_CACHE_SCHEMA_VERSION,
+                data=phase_data,
+            )
+
         fig = plot_phase_transition(
             n=n,
             m=args.m,
@@ -192,6 +270,7 @@ Examples:
             burn_in=args.burn_in,
             collection_steps=args.collection_steps,
             runs=args.runs,
+            phase_data=phase_data,
         )
         
         # Save as PDF if requested

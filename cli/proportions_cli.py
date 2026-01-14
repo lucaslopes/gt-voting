@@ -7,6 +7,13 @@ from core.honest_reports import generate_honest_reports, parse_baselines
 from core.rankings_core import generate_rankings, candidate_labels
 from core.strategic_reports import generate_strategic_reports
 from core.aggregator_core import aggregate_rankings
+from core.cache_utils import (
+    normalize_baselines_str,
+    load_cached_run,
+    save_cached_run,
+    PROPORTIONS_CACHE_SCHEMA_VERSION,
+    get_run_path,
+)
 from plots.plot_proportions import plot_proportions
 from plots.BasePlot import BasePlot
 from mechanisms import list_mechanisms
@@ -207,6 +214,12 @@ Examples:
              "Only available for strategic reports mode (when --T is provided) and when using GTStrategy. "
              "Creates two subplots: left shows instantaneous p^t, right shows time-averaged \\hat{p}^t."
     )
+    parser.add_argument(
+        "--force-recompute",
+        action="store_true",
+        dest="force_recompute",
+        help="Ignore any cached results and recompute simulations"
+    )
     
     args = parser.parse_args(args)
     
@@ -247,37 +260,93 @@ Examples:
             baselines = None
             n = args.n if args.n is not None else 15
         
-        # Generate honest reports
-        try:
-            honest_reports = generate_honest_reports(
-                m=args.m,
-                n=n,
-                baselines=baselines,
-                seed=args.seed
+        cache_params = {
+            "mode": "strategic",
+            "n": int(n),
+            "m": int(args.m),
+            "seed": int(args.seed),
+            "baselines": normalize_baselines_str(args.baselines) if args.baselines else None,
+            "T": int(args.T),
+            "strategy": args.strategy,
+            "anchor_strength": float(args.anchor_strength),
+            "learning_rate": float(args.learning_rate),
+            "sharpness": float(args.sharpness),
+            "distance_metric": args.distance_metric,
+        }
+        cache_prefix_parts = [
+            "proportions",
+            "strategic",
+            f"m{args.m}",
+            f"n{n}",
+            f"T{args.T}",
+            f"seed{args.seed}",
+            args.strategy,
+            f"as{args.anchor_strength}",
+            f"lr{args.learning_rate}",
+            f"sh{args.sharpness}",
+        ]
+        if args.baselines:
+            cache_prefix_parts.append("baselines")
+
+        cached = None
+        if not args.force_recompute:
+            cached, _meta = load_cached_run(
+                command="proportions",
+                params=cache_params,
+                prefix_parts=cache_prefix_parts,
+                schema_version=PROPORTIONS_CACHE_SCHEMA_VERSION,
             )
-        except ValueError as e:
-            parser.error(str(e))
-        
-        # Generate strategic reports
-        # T represents total time steps (t=0 to t=T-1, so T total steps)
-        # Strategy generates reports for t=0 to t=T (T+1 steps) and p_history/p_avg_history for t=1 to t=T (T entries)
-        # So we pass args.T to get T iterations for p_history/p_avg_history (t=1 to t=T)
-        try:
-            strategies_result = generate_strategic_reports(
-                honest_reports=honest_reports,
-                T=args.T,
-                m=args.m,
-                seed=args.seed,
-            strategy=args.strategy,
-            # GTStrategy parameters
-            anchor_strength=args.anchor_strength,
-            learning_rate=args.learning_rate,
-            sharpness=args.sharpness,
-            # SimilarityStrategy parameters
-            distance_metric=args.distance_metric
+            if cached is not None:
+                run_dir = get_run_path(command="proportions", params=cache_params, prefix_parts=cache_prefix_parts)
+                print(f"[cache] proportions(strategic) hit: {run_dir}")
+
+        if cached is None:
+            run_dir = get_run_path(command="proportions", params=cache_params, prefix_parts=cache_prefix_parts)
+            print(f"[cache] proportions(strategic) miss: {run_dir}")
+
+            # Generate honest reports
+            try:
+                honest_reports = generate_honest_reports(
+                    m=args.m,
+                    n=n,
+                    baselines=baselines,
+                    seed=args.seed
+                )
+            except ValueError as e:
+                parser.error(str(e))
+            
+            # Generate strategic reports
+            # T represents total time steps (t=0 to t=T-1, so T total steps)
+            # Strategy generates reports for t=0 to t=T (T+1 steps) and p_history/p_avg_history for t=1 to t=T (T entries)
+            # So we pass args.T to get T iterations for p_history/p_avg_history (t=1 to t=T)
+            try:
+                strategies_result = generate_strategic_reports(
+                    honest_reports=honest_reports,
+                    T=args.T,
+                    m=args.m,
+                    seed=args.seed,
+                    strategy=args.strategy,
+                    # GTStrategy parameters
+                    anchor_strength=args.anchor_strength,
+                    learning_rate=args.learning_rate,
+                    sharpness=args.sharpness,
+                    # SimilarityStrategy parameters
+                    distance_metric=args.distance_metric
+                )
+            except ValueError as e:
+                parser.error(str(e))
+
+            save_cached_run(
+                command="proportions",
+                params=cache_params,
+                prefix_parts=cache_prefix_parts,
+                schema_version=PROPORTIONS_CACHE_SCHEMA_VERSION,
+                data={"n": n, "honest_reports": honest_reports, "strategies_result": strategies_result},
             )
-        except ValueError as e:
-            parser.error(str(e))
+        else:
+            n = cached["n"]
+            honest_reports = cached["honest_reports"]
+            strategies_result = cached["strategies_result"]
         
         # Extract the reports array from the dict (generate_strategic_reports returns a dict)
         strategies_full = strategies_result["reports"]
@@ -451,22 +520,69 @@ Examples:
             baselines = None
             n = args.n if args.n is not None else 15
         
-        # Generate honest reports (single election)
-        try:
-            reported_rankings = generate_honest_reports(
-                m=args.m,
-                n=n,
-                baselines=baselines,
-                seed=args.seed
+        cache_params = {
+            "mode": "single",
+            "n": int(n),
+            "m": int(args.m),
+            "seed": int(args.seed),
+            "baselines": normalize_baselines_str(args.baselines) if args.baselines else None,
+            "mechanism": args.mechanism,
+        }
+        cache_prefix_parts = [
+            "proportions",
+            "single",
+            f"m{args.m}",
+            f"n{n}",
+            f"seed{args.seed}",
+            args.mechanism,
+        ]
+        if args.baselines:
+            cache_prefix_parts.append("baselines")
+
+        cached = None
+        if not args.force_recompute:
+            cached, _meta = load_cached_run(
+                command="proportions",
+                params=cache_params,
+                prefix_parts=cache_prefix_parts,
+                schema_version=PROPORTIONS_CACHE_SCHEMA_VERSION,
             )
-        except ValueError as e:
-            parser.error(str(e))
-        
-        # Aggregate to get probabilities
-        try:
-            probs = aggregate_rankings(reported_rankings, mechanism=args.mechanism)
-        except ValueError as e:
-            parser.error(str(e))
+            if cached is not None:
+                run_dir = get_run_path(command="proportions", params=cache_params, prefix_parts=cache_prefix_parts)
+                print(f"[cache] proportions(single) hit: {run_dir}")
+
+        if cached is None:
+            run_dir = get_run_path(command="proportions", params=cache_params, prefix_parts=cache_prefix_parts)
+            print(f"[cache] proportions(single) miss: {run_dir}")
+
+            # Generate honest reports (single election)
+            try:
+                reported_rankings = generate_honest_reports(
+                    m=args.m,
+                    n=n,
+                    baselines=baselines,
+                    seed=args.seed
+                )
+            except ValueError as e:
+                parser.error(str(e))
+            
+            # Aggregate to get probabilities
+            try:
+                probs = aggregate_rankings(reported_rankings, mechanism=args.mechanism)
+            except ValueError as e:
+                parser.error(str(e))
+
+            save_cached_run(
+                command="proportions",
+                params=cache_params,
+                prefix_parts=cache_prefix_parts,
+                schema_version=PROPORTIONS_CACHE_SCHEMA_VERSION,
+                data={"n": n, "reported_rankings": reported_rankings, "probs": probs},
+            )
+        else:
+            n = cached["n"]
+            reported_rankings = cached["reported_rankings"]
+            probs = cached["probs"]
         
         # Print summary
         print(f"Single Election Mode:")

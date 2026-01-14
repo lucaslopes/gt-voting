@@ -3,6 +3,14 @@
 import argparse
 import matplotlib.pyplot as plt
 from core.honest_reports import parse_baselines
+from core.phase_transition import run_phase_transition_ternary
+from core.cache_utils import (
+    normalize_baselines_str,
+    load_cached_run,
+    save_cached_run,
+    TERNARY_CACHE_SCHEMA_VERSION,
+    get_run_path,
+)
 from plots.plot_ternary import plot_ternary_trajectories
 from plots.BasePlot import BasePlot
 
@@ -160,6 +168,12 @@ Examples:
         action="store_true",
         help="Export the plot as a high-quality PDF file"
     )
+    parser.add_argument(
+        "--force-recompute",
+        action="store_true",
+        dest="force_recompute",
+        help="Ignore any cached results and recompute simulations"
+    )
     
     args = parser.parse_args(args)
     
@@ -226,6 +240,81 @@ Examples:
     
     # Generate plot
     if args.plot or args.save:
+        # Determine which alpha(s) we need trajectories for
+        if alpha is not None:
+            alphas_for_cache = [float(alpha)]
+            alpha_before_for_cache = None
+            alpha_after_for_cache = None
+        else:
+            alphas_for_cache = [float(alpha_before), float(alpha_after)]
+            alpha_before_for_cache = float(alpha_before)
+            alpha_after_for_cache = float(alpha_after)
+
+        params = {
+            "n": int(n),
+            "m": int(args.m),
+            "seed": int(args.seed),
+            "baselines": normalize_baselines_str(args.baselines) if args.baselines else None,
+            "learning_rate": float(args.learning_rate),
+            "sharpness": float(args.sharpness),
+            "T": int(args.T),
+            "alpha": float(alpha) if alpha is not None else None,
+            "alpha_before": alpha_before_for_cache,
+            "alpha_after": alpha_after_for_cache,
+        }
+        prefix_parts = [
+            "ternary",
+            f"m{args.m}",
+            f"n{n}",
+            f"T{args.T}",
+            f"lr{args.learning_rate}",
+            f"sh{args.sharpness}",
+            f"seed{args.seed}",
+        ]
+        if alpha is not None:
+            prefix_parts.append(f"alpha{alpha}")
+        else:
+            prefix_parts.append(f"alphaBefore{alpha_before}")
+            prefix_parts.append(f"alphaAfter{alpha_after}")
+
+        ternary_data = None
+        if not args.force_recompute:
+            ternary_data, _meta = load_cached_run(
+                command="ternary",
+                params=params,
+                prefix_parts=prefix_parts,
+                schema_version=TERNARY_CACHE_SCHEMA_VERSION,
+            )
+            if ternary_data is not None:
+                run_dir = get_run_path(command="ternary", params=params, prefix_parts=prefix_parts)
+                print(f"[cache] ternary hit: {run_dir}")
+
+        if ternary_data is None:
+            run_dir = get_run_path(command="ternary", params=params, prefix_parts=prefix_parts)
+            print(f"[cache] ternary miss: {run_dir}")
+            trajectories = []
+            for a in alphas_for_cache:
+                trajectories.append(
+                    run_phase_transition_ternary(
+                        a,
+                        T=args.T,
+                        n=n,
+                        m=args.m,
+                        eta=args.learning_rate,
+                        beta=args.sharpness,
+                        seed=args.seed,
+                        baselines=baselines,
+                    )
+                )
+            ternary_data = {"alphas": alphas_for_cache, "trajectories": trajectories}
+            save_cached_run(
+                command="ternary",
+                params=params,
+                prefix_parts=prefix_parts,
+                schema_version=TERNARY_CACHE_SCHEMA_VERSION,
+                data=ternary_data,
+            )
+
         fig = plot_ternary_trajectories(
             n=n,
             m=args.m,
@@ -238,6 +327,7 @@ Examples:
             alpha=alpha,
             alpha_before=alpha_before,
             alpha_after=alpha_after,
+            ternary_data=ternary_data,
         )
         
         # Save as PDF if requested

@@ -15,3 +15,4 @@ wheels/
 # Project-specific files
 docs/*
 images/*
+data/*

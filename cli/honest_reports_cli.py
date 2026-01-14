@@ -1,6 +1,13 @@
 import argparse
 from core.honest_reports import generate_honest_reports, parse_baselines, format_rankings_readable
 from core.rankings_core import generate_rankings, candidate_labels
+from core.cache_utils import (
+    normalize_baselines_str,
+    load_cached_run,
+    save_cached_run,
+    HONEST_REPORTS_CACHE_SCHEMA_VERSION,
+    get_run_path,
+)
 from plots.plot_voter_strategies import plot_voter_strategies
 from plots.BasePlot import BasePlot
 import matplotlib.pyplot as plt
@@ -92,6 +99,12 @@ Examples:
         action="store_true",
         help="Export the plot as a high-quality PDF file"
     )
+    parser.add_argument(
+        "--force-recompute",
+        action="store_true",
+        dest="force_recompute",
+        help="Ignore any cached results and recompute reports"
+    )
     
     args = parser.parse_args(args)
     
@@ -115,16 +128,51 @@ Examples:
         baselines = None
         n = args.n if args.n is not None else 15
     
-    # Generate honest reports
-    try:
-        honest_reports = generate_honest_reports(
-            m=args.m,
-            n=n,
-            baselines=baselines,
-            seed=args.seed
+    cache_params = {
+        "n": int(n),
+        "m": int(args.m),
+        "seed": int(args.seed),
+        "baselines": normalize_baselines_str(args.baselines) if args.baselines else None,
+    }
+    cache_prefix_parts = ["honest_reports", f"m{args.m}", f"n{n}", f"seed{args.seed}"]
+    if args.baselines:
+        cache_prefix_parts.append("baselines")
+
+    cached = None
+    if not args.force_recompute:
+        cached, _meta = load_cached_run(
+            command="honest_reports",
+            params=cache_params,
+            prefix_parts=cache_prefix_parts,
+            schema_version=HONEST_REPORTS_CACHE_SCHEMA_VERSION,
         )
-    except ValueError as e:
-        parser.error(str(e))
+        if cached is not None:
+            run_dir = get_run_path(command="honest_reports", params=cache_params, prefix_parts=cache_prefix_parts)
+            print(f"[cache] honest_reports hit: {run_dir}")
+
+    if cached is None:
+        run_dir = get_run_path(command="honest_reports", params=cache_params, prefix_parts=cache_prefix_parts)
+        print(f"[cache] honest_reports miss: {run_dir}")
+        # Generate honest reports
+        try:
+            honest_reports = generate_honest_reports(
+                m=args.m,
+                n=n,
+                baselines=baselines,
+                seed=args.seed
+            )
+        except ValueError as e:
+            parser.error(str(e))
+        save_cached_run(
+            command="honest_reports",
+            params=cache_params,
+            prefix_parts=cache_prefix_parts,
+            schema_version=HONEST_REPORTS_CACHE_SCHEMA_VERSION,
+            data={"n": n, "honest_reports": honest_reports},
+        )
+    else:
+        n = cached["n"]
+        honest_reports = cached["honest_reports"]
     
     # Format and output results
     if args.alphabetical:

@@ -55,6 +55,12 @@ def main():
         help="Export the plot as a high-quality PDF file"
     )
     rankings_parser.add_argument(
+        "--force-recompute",
+        action="store_true",
+        dest="force_recompute",
+        help="Ignore any cached results and recompute"
+    )
+    rankings_parser.add_argument(
         "--layout",
         type=str,
         choices=['horizontal', 'vertical', 'matrix', 'auto'],
@@ -110,6 +116,12 @@ def main():
         "--save",
         action="store_true",
         help="Export the plot as a high-quality PDF file"
+    )
+    honest_reports_parser.add_argument(
+        "--force-recompute",
+        action="store_true",
+        dest="force_recompute",
+        help="Ignore any cached results and recompute"
     )
     
     # Strategic reports subcommand
@@ -226,6 +238,12 @@ def main():
         "--save",
         action="store_true",
         help="Export the plot as a high-quality PDF file"
+    )
+    strategic_reports_parser.add_argument(
+        "--force-recompute",
+        action="store_true",
+        dest="force_recompute",
+        help="Ignore any cached results and recompute"
     )
     
     # Proportions subcommand
@@ -379,6 +397,12 @@ def main():
              "Only available for strategic reports mode (when --T is provided) and when using GTStrategy. "
              "Creates two subplots: left shows instantaneous p^t, right shows time-averaged \\hat{p}^t."
     )
+    proportions_parser.add_argument(
+        "--force-recompute",
+        action="store_true",
+        dest="force_recompute",
+        help="Ignore any cached results and recompute"
+    )
     
     # Ternary subcommand
     ternary_parser = subparsers.add_parser(
@@ -495,6 +519,12 @@ def main():
         action="store_true",
         help="Export the plot as a high-quality PDF file"
     )
+    ternary_parser.add_argument(
+        "--force-recompute",
+        action="store_true",
+        dest="force_recompute",
+        help="Ignore any cached results and recompute"
+    )
     
     # Phase transition subcommand
     phase_transition_parser = subparsers.add_parser(
@@ -596,6 +626,12 @@ def main():
         action="store_true",
         help="Export the plot as a high-quality PDF file"
     )
+    phase_transition_parser.add_argument(
+        "--force-recompute",
+        action="store_true",
+        dest="force_recompute",
+        help="Ignore any cached results and recompute"
+    )
     
     # Dashboard subcommand
     dashboard_parser = subparsers.add_parser(
@@ -677,6 +713,12 @@ def main():
         action="store_true",
         help="Export the plot as a high-quality PDF file"
     )
+    dashboard_parser.add_argument(
+        "--force-recompute",
+        action="store_true",
+        dest="force_recompute",
+        help="Ignore any cached results and recompute"
+    )
     
     args = parser.parse_args()
     
@@ -723,6 +765,8 @@ def main():
             rankings_args.append('--plot')
         if args.save:
             rankings_args.append('--save')
+        if getattr(args, "force_recompute", False):
+            rankings_args.append('--force-recompute')
         if args.layout != 'auto':
             rankings_args.extend(['--layout', args.layout])
         rankings_main(rankings_args)
@@ -741,6 +785,8 @@ def main():
             honest_reports_args.append('--plot')
         if args.save:
             honest_reports_args.append('--save')
+        if getattr(args, "force_recompute", False):
+            honest_reports_args.append('--force-recompute')
         honest_reports_main(honest_reports_args)
     elif args.command == 'strategic-reports':
         # Build argument list for strategic reports CLI
@@ -765,6 +811,8 @@ def main():
             strategic_reports_args.append('--plot')
         if args.save:
             strategic_reports_args.append('--save')
+        if getattr(args, "force_recompute", False):
+            strategic_reports_args.append('--force-recompute')
         strategic_reports_main(strategic_reports_args)
     elif args.command == 'proportions':
         # Build argument list for proportions CLI
@@ -795,6 +843,8 @@ def main():
             proportions_args.append('--time-average')
         if hasattr(args, 'show_both') and args.show_both:
             proportions_args.append('--show-both')
+        if getattr(args, "force_recompute", False):
+            proportions_args.append('--force-recompute')
         proportions_main(proportions_args)
     elif args.command == 'ternary':
         # Build argument list for ternary CLI
@@ -820,6 +870,8 @@ def main():
             ternary_args.append('--plot')
         if args.save:
             ternary_args.append('--save')
+        if getattr(args, "force_recompute", False):
+            ternary_args.append('--force-recompute')
         ternary_main(ternary_args)
     elif args.command == 'phase-transition':
         # Build argument list for phase transition CLI
@@ -844,6 +896,8 @@ def main():
             phase_transition_args.append('--plot')
         if args.save:
             phase_transition_args.append('--save')
+        if getattr(args, "force_recompute", False):
+            phase_transition_args.append('--force-recompute')
         phase_transition_main(phase_transition_args)
     elif args.command == 'dashboard':
         # Build argument list for dashboard CLI
@@ -861,6 +915,8 @@ def main():
             dashboard_args.append('--plot')
         if args.save:
             dashboard_args.append('--save')
+        if getattr(args, "force_recompute", False):
+            dashboard_args.append('--force-recompute')
         dashboard_main(dashboard_args)
 
 

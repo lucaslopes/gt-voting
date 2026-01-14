@@ -208,7 +208,7 @@ class TernaryPlot(BasePlot):
     """Ternary trajectory plot for visualizing voting dynamics."""
     
     def plot(self, n=15, m=3, eta=0.2, beta=3.0, T=300, seed=0, baselines=None,
-             ax=None, title=None, alpha=None, alpha_before=None, alpha_after=None):
+             ax=None, title=None, alpha=None, alpha_before=None, alpha_after=None, ternary_data=None):
         """
         Plot ternary trajectory plot(s) for given alpha value(s).
         
@@ -255,13 +255,20 @@ class TernaryPlot(BasePlot):
                 "or both --alpha-before and --alpha-after for two plots"
             )
         
-        # Generate trajectories for all scenarios
-        trajectories = []
-        for a in alphas:
-            traj = run_phase_transition_ternary(
-                a, T=T, n=n, m=m, eta=eta, beta=beta, seed=seed, baselines=baselines
-            )
-            trajectories.append(traj)
+        # Generate trajectories for all scenarios (or use cached data)
+        if ternary_data is not None:
+            trajectories = ternary_data.get("trajectories")
+            if trajectories is None:
+                raise ValueError("ternary_data must include 'trajectories'")
+            if len(trajectories) != len(alphas):
+                raise ValueError("ternary_data trajectories length does not match requested alphas")
+        else:
+            trajectories = []
+            for a in alphas:
+                traj = run_phase_transition_ternary(
+                    a, T=T, n=n, m=m, eta=eta, beta=beta, seed=seed, baselines=baselines
+                )
+                trajectories.append(traj)
         
         # Create figure if needed
         if ax is None:

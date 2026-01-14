@@ -4,6 +4,13 @@ from core.honest_reports import generate_honest_reports, parse_baselines, format
 from core.rankings_core import generate_rankings, candidate_labels
 from core.strategic_reports import generate_strategic_reports
 from core.graph_utils import parse_edge_list
+from core.cache_utils import (
+    normalize_baselines_str,
+    load_cached_run,
+    save_cached_run,
+    STRATEGIC_REPORTS_CACHE_SCHEMA_VERSION,
+    get_run_path,
+)
 from plots.plot_voter_strategies import plot_voter_strategies
 from plots.BasePlot import BasePlot
 import matplotlib.pyplot as plt
@@ -205,6 +212,12 @@ Examples:
              "or a comma-separated list of time step indices (e.g., '1,2,5'). "
              "Time steps are 1-indexed (t=1..T). Default: 'all'"
     )
+    parser.add_argument(
+        "--force-recompute",
+        action="store_true",
+        dest="force_recompute",
+        help="Ignore any cached results and recompute simulations"
+    )
     
     args = parser.parse_args(args)
     
@@ -262,41 +275,101 @@ Examples:
             graph = parse_edge_list(args.graph, n)
         except ValueError as e:
             parser.error(f"Invalid graph specification: {e}")
-    
-    # Generate honest reports
-    try:
-        honest_reports = generate_honest_reports(
-            m=args.m,
-            n=n,
-            baselines=baselines,
-            seed=args.seed
+
+    # Caching: strategic reports are expensive when T is large; cache the generated results.
+    cache_params = {
+        "n": int(n),
+        "m": int(args.m),
+        "seed": int(args.seed),
+        "baselines": normalize_baselines_str(args.baselines) if args.baselines else None,
+        "T": int(args.T),
+        "strategy": args.strategy,
+        "anchor_strength": float(args.anchor_strength),
+        "learning_rate": float(args.learning_rate),
+        "sharpness": float(args.sharpness),
+        "use_expected_score": bool(args.use_expected_score),
+        "distance_metric": args.distance_metric,
+        "graph": args.graph.strip() if args.graph else None,
+    }
+    cache_prefix_parts = [
+        "strategic_reports",
+        f"m{args.m}",
+        f"n{n}",
+        f"T{args.T}",
+        f"seed{args.seed}",
+        args.strategy,
+        f"as{args.anchor_strength}",
+        f"lr{args.learning_rate}",
+        f"sh{args.sharpness}",
+    ]
+    if args.baselines:
+        cache_prefix_parts.append("baselines")
+    if args.graph:
+        cache_prefix_parts.append("graph")
+    if args.use_expected_score:
+        cache_prefix_parts.append("expected")
+
+    cached = None
+    if not args.force_recompute:
+        cached, _meta = load_cached_run(
+            command="strategic_reports",
+            params=cache_params,
+            prefix_parts=cache_prefix_parts,
+            schema_version=STRATEGIC_REPORTS_CACHE_SCHEMA_VERSION,
         )
-    except ValueError as e:
-        parser.error(str(e))
+        if cached is not None:
+            run_dir = get_run_path(command="strategic_reports", params=cache_params, prefix_parts=cache_prefix_parts)
+            print(f"[cache] strategic_reports hit: {run_dir}")
     
-    # Generate strategic reports
-    # T represents total time steps, but strategy generates T+1 when T is passed
-    # So we pass max(1, T-1) to get T total time steps (t=0 to t=T-1)
-    # Use max(1, T-1) because strategy requires T >= 1
-    try:
-        results = generate_strategic_reports(
-            honest_reports=honest_reports,
-            T=max(1, args.T - 1),
-            m=args.m,
-            seed=args.seed,
-            strategy=args.strategy,
-            # GTStrategy parameters
-            anchor_strength=args.anchor_strength,
-            learning_rate=args.learning_rate,
-            sharpness=args.sharpness,
-            use_expected_score=args.use_expected_score,
-            # SimilarityStrategy parameters
-            distance_metric=args.distance_metric,
-            # Graph topology
-            graph=graph
+    if cached is None:
+        run_dir = get_run_path(command="strategic_reports", params=cache_params, prefix_parts=cache_prefix_parts)
+        print(f"[cache] strategic_reports miss: {run_dir}")
+
+        # Generate honest reports
+        try:
+            honest_reports = generate_honest_reports(
+                m=args.m,
+                n=n,
+                baselines=baselines,
+                seed=args.seed
+            )
+        except ValueError as e:
+            parser.error(str(e))
+
+        # Generate strategic reports
+        # T represents total time steps, but strategy generates T+1 when T is passed
+        # So we pass max(1, T-1) to get T total time steps (t=0 to t=T-1)
+        # Use max(1, T-1) because strategy requires T >= 1
+        try:
+            results = generate_strategic_reports(
+                honest_reports=honest_reports,
+                T=max(1, args.T - 1),
+                m=args.m,
+                seed=args.seed,
+                strategy=args.strategy,
+                # GTStrategy parameters
+                anchor_strength=args.anchor_strength,
+                learning_rate=args.learning_rate,
+                sharpness=args.sharpness,
+                use_expected_score=args.use_expected_score,
+                # SimilarityStrategy parameters
+                distance_metric=args.distance_metric,
+                # Graph topology
+                graph=graph
+            )
+        except ValueError as e:
+            parser.error(str(e))
+
+        save_cached_run(
+            command="strategic_reports",
+            params=cache_params,
+            prefix_parts=cache_prefix_parts,
+            schema_version=STRATEGIC_REPORTS_CACHE_SCHEMA_VERSION,
+            data={"n": n, "honest_reports": honest_reports, "results": results},
         )
-    except ValueError as e:
-        parser.error(str(e))
+    else:
+        honest_reports = cached["honest_reports"]
+        results = cached["results"]
 
     # Unpack standardized results dict
     strategies_full = results["reports"]
