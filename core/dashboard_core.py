@@ -83,9 +83,21 @@ def run_dashboard_simulation(n=15, m=3, seed=0, baselines=None, eta=0.2, beta=3.
             # #region agent log
             x_initial = sys_before.x.copy()
             x_initial_hash = hash(tuple(x_initial.flatten()))
+            # Compute initial baseline outcome from baselines
+            from core.honest_reports import baseline_indices_to_rankings
+            from mechanisms.GT import GT
+            if baselines is not None:
+                initial_rankings = baseline_indices_to_rankings(baselines, m)
+                gt_initial = GT()
+                p_initial_baseline = np.array(gt_initial.aggregate(initial_rankings))
+                center = np.array([1 / m] * m)
+                dist_initial = np.linalg.norm(p_initial_baseline - center)
+            else:
+                p_initial_baseline = None
+                dist_initial = None
             with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
                 sys_baselines_list = list(sys_before.baselines) if hasattr(sys_before.baselines, '__iter__') else sys_before.baselines
-                f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"X","location":"dashboard_core.py:78","message":"Dashboard system initialized for alpha_before","data":{{"alpha_before":{alpha_before},"x_initial_hash":{x_initial_hash},"x_initial_sum":{float(np.sum(x_initial))},"sys_baselines":{sys_baselines_list}}}}}\n')
+                f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"X","location":"dashboard_core.py:78","message":"Dashboard system initialized for alpha_before","data":{{"alpha_before":{alpha_before},"x_initial_hash":{x_initial_hash},"x_initial_sum":{float(np.sum(x_initial))},"sys_baselines":{sys_baselines_list},"p_initial_baseline":{list(p_initial_baseline) if p_initial_baseline is not None else None},"dist_initial":{dist_initial}}}}}\n')
             # #endregion
             # Burn-in phase (matching phase transition)
             # Log first few steps to compare with phase transition
@@ -145,6 +157,16 @@ def run_dashboard_simulation(n=15, m=3, seed=0, baselines=None, eta=0.2, beta=3.
                 f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"N","location":"dashboard_core.py:113","message":"Dashboard simulation at alpha_before (with burn_in)","data":{{"alpha_before":{alpha_before},"burn_in":{burn_in},"T":{T},"avg_p_dashboard":{list(avg_p_dashboard)},"dist_dashboard":{dist_dashboard},"final_p":{list(final_p) if final_p is not None else None},"dist_final":{dist_final},"dist_first_50_avg":{dist_first_50_avg},"dist_last_50_avg":{np.mean(all_dists[-50:]) if len(all_dists) >= 50 else None}}}}}\n')
             # #endregion
             ternary["traj_before"] = traj_before
+            # Store initial baseline outcome for ternary plot "Start" point
+            if baselines is not None:
+                from core.honest_reports import baseline_indices_to_rankings
+                from mechanisms.GT import GT
+                initial_rankings = baseline_indices_to_rankings(baselines, m)
+                gt_initial = GT()
+                p_initial_baseline = np.array(gt_initial.aggregate(initial_rankings))
+                ternary["p_initial_baseline"] = p_initial_baseline
+            else:
+                ternary["p_initial_baseline"] = None
             # Reuse strategies and perms from before run for heatmap
             strategies = strategies_before
             perms = perms_before
@@ -173,6 +195,14 @@ def run_dashboard_simulation(n=15, m=3, seed=0, baselines=None, eta=0.2, beta=3.
                 p = sys_after.step()
                 traj_after.append(p)
             traj_after = np.array(traj_after)
+            # Store initial baseline outcome for ternary plot "Start" point (same as before)
+            if baselines is not None and ternary.get("p_initial_baseline") is None:
+                from core.honest_reports import baseline_indices_to_rankings
+                from mechanisms.GT import GT
+                initial_rankings = baseline_indices_to_rankings(baselines, m)
+                gt_initial = GT()
+                p_initial_baseline = np.array(gt_initial.aggregate(initial_rankings))
+                ternary["p_initial_baseline"] = p_initial_baseline
             # #region agent log
             center = np.array([1 / m] * m)
             # Compute average of last 50 steps (similar to phase transition collection_steps)

@@ -1,8 +1,106 @@
 """GT (Game Theory) aggregation mechanism implementing the Rivest-Shen GT voting system."""
 
 import numpy as np
+from numba import njit
 from scipy.optimize import linprog
 from mechanisms.BaseMechanism import BaseMechanism
+
+
+def solve_gt_game_from_margin_matrix(M, m):
+    """
+    Solve GT game from margin matrix using linear programming.
+    
+    Solves max_p min_q p^T M q, which is equivalent to finding the Nash
+    equilibrium mixed strategy for the zero-sum game defined by margin matrix M.
+    
+    This is a shared function used by both GT.aggregate() and GTStrategy.
+    
+    Args:
+        M: Margin matrix, shape [m, m]
+        m: Number of candidates
+    
+    Returns:
+        numpy array of shape [m] representing the probability distribution over candidates
+    
+    Raises:
+        ValueError: If linear programming optimization fails
+    """
+    # Single candidate case
+    if m == 1:
+        return np.array([1.0])
+    
+    # LP formulation: Maximize v subject to M^T p >= v * 1, sum(p) = 1, p >= 0
+    # Reference: Rivest-Shen paper, Theorem 2
+    # For scipy.optimize.linprog (which minimizes), reformulate as:
+    # Minimize: -v
+    # Subject to: -M^T p + v <= 0, sum(p) = 1, p >= 0, v unbounded
+    
+    # Variables: [p_0, ..., p_{m-1}, v]
+    c = np.zeros(m + 1)
+    c[-1] = -1.0  # Minimize -v (maximize v)
+    
+    # Constraints: M^T p >= v  =>  -M^T p + v <= 0
+    A_ub = np.hstack([-M.T, np.ones((m, 1))])
+    b_ub = np.zeros(m)
+    
+    # Equality constraint: sum(p) = 1
+    A_eq = np.zeros((1, m + 1))
+    A_eq[0, :m] = 1.0
+    b_eq = np.array([1.0])
+    
+    # Bounds: p_i >= 0 for all i, v is unbounded
+    bounds = [(0, None) for _ in range(m)] + [(None, None)]
+    
+    res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+    
+    if not res.success:
+        raise ValueError(f"Linear programming optimization failed: {res.message}")
+    
+    # Extract the probability distribution (first m components)
+    return res.x[:m]
+
+
+@njit
+def _compute_margin_matrix_numba(rank_positions_array, m, n):
+    """
+    Numba-optimized computation of margin matrix.
+    
+    Args:
+        rank_positions_array: Array of shape [n, m] where rank_positions_array[v, c] is the
+            position of candidate c in ballot v, or -1 if candidate c is not in ballot v
+        m: Number of candidates
+        n: Number of voters
+    
+    Returns:
+        numpy array of shape [m, m] representing the margin matrix M
+        where M[i, j] = (count i > j) - (count j > i)
+    """
+    M = np.zeros((m, m))
+    
+    for i in range(m):
+        for j in range(m):
+            if i == j:
+                continue
+            
+            votes_i_over_j = 0
+            votes_j_over_i = 0
+            
+            # Iterate over all ballots
+            for v in range(n):
+                # Get positions of candidates i and j in ballot v
+                pos_i = rank_positions_array[v, i]
+                pos_j = rank_positions_array[v, j]
+                
+                # Check if both candidates are in the ballot (position >= 0)
+                if pos_i >= 0 and pos_j >= 0:
+                    if pos_i < pos_j:  # i is preferred over j
+                        votes_i_over_j += 1
+                    else:  # j is preferred over i
+                        votes_j_over_i += 1
+            
+            M[i, j] = votes_i_over_j - votes_j_over_i
+    
+    return M
 
 
 class GT(BaseMechanism):
@@ -68,83 +166,21 @@ class GT(BaseMechanism):
             return [1.0]
         
         # Pre-compute rank positions for each ballot to avoid repeated index() calls
-        # rank_positions[v][c] = position of candidate c in ballot v (or None if not present)
-        # This optimization reduces complexity from O(n * m^3) to O(n * m^2)
-        rank_positions = []
-        for ballot in reported_rankings:
-            # Create a dictionary mapping candidate to position for O(1) lookup
-            pos_dict = {cand: pos for pos, cand in enumerate(ballot)}
-            rank_positions.append(pos_dict)
+        # Convert to numpy array for numba compatibility
+        # rank_positions_array[v, c] = position of candidate c in ballot v (or -1 if not present)
+        rank_positions_array = np.full((n, m), -1, dtype=np.int32)
+        for v, ballot in enumerate(reported_rankings):
+            for pos, cand in enumerate(ballot):
+                # Find index of candidate in candidates list
+                cand_idx = candidates.index(cand)
+                rank_positions_array[v, cand_idx] = pos
         
-        # Compute the Margin Matrix M
+        # Compute the Margin Matrix M using numba-optimized function
         # M[i, j] = (count i > j) - (count j > i)
-        M = np.zeros((m, m))
-        
-        for i in range(m):
-            for j in range(m):
-                if i == j:
-                    continue
-                
-                cand_i = candidates[i]
-                cand_j = candidates[j]
-                
-                votes_i_over_j = 0
-                votes_j_over_i = 0
-                
-                # Use pre-computed positions for O(1) lookup instead of O(m) index() call
-                for pos_dict in rank_positions:
-                    # Check if both candidates are in the ballot
-                    if cand_i in pos_dict and cand_j in pos_dict:
-                        if pos_dict[cand_i] < pos_dict[cand_j]:
-                            votes_i_over_j += 1
-                        else:
-                            votes_j_over_i += 1
-                
-                M[i, j] = votes_i_over_j - votes_j_over_i
+        M = _compute_margin_matrix_numba(rank_positions_array, m, n)
         
         # Compute Optimal Mixed Strategy using Linear Programming
-        # Reference: Rivest-Shen paper, Theorem 2
-        # Standard zero-sum game LP formulation:
-        # Maximize: v (game value)
-        # Subject to: M^T p >= v * 1 (element-wise)
-        #             sum(p) = 1
-        #             p >= 0
-        #
-        # For scipy.optimize.linprog (which minimizes), we reformulate as:
-        # Minimize: -v
-        # Subject to: -M^T p + v <= 0 (equivalent to M^T p >= v)
-        #             sum(p) = 1
-        #             p >= 0, v unbounded
-        
-        # Variables: x = [p_0, p_1, ..., p_{m-1}, v]
-        # Size: m + 1
-        
-        # Objective: Maximize v -> Minimize -v
-        c = np.zeros(m + 1)
-        c[-1] = -1.0
-        
-        # Constraints: M^T p >= v  =>  -M^T p + v <= 0
-        # A_ub should be shape (m, m+1)
-        # For each row i of M: -sum(M_ij * p_j) + 1*v <= 0
-        A_ub = np.hstack([-M.T, np.ones((m, 1))])
-        b_ub = np.zeros(m)
-        
-        # Equality constraint: sum(p) = 1
-        # [1, 1, ..., 1, 0] * x = 1
-        A_eq = np.zeros((1, m + 1))
-        A_eq[0, :m] = 1.0
-        b_eq = np.array([1.0])
-        
-        # Bounds: p_i >= 0 for all i, v is unbounded
-        bounds = [(0, None) for _ in range(m)] + [(None, None)]
-        
-        res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
-        
-        if not res.success:
-            raise ValueError(f"Linear programming optimization failed: {res.message}")
-        
-        # Extract the probability distribution (first m components)
-        p_optimal = res.x[:m]
+        p_optimal = solve_gt_game_from_margin_matrix(M, m)
         
         # Return probabilities as a list in candidate order
         # Round to avoid floating point precision issues

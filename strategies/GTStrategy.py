@@ -2,11 +2,123 @@
 
 import numpy as np
 from itertools import permutations
+from numba import njit
 from strategies.BaseStrategy import BaseStrategy
 from core.aggregator_core import aggregate_rankings
 from core.rankings_core import generate_rankings
 from core.utils import spawn_rng
 from core.graph_utils import compute_degrees, compute_and_store_payoffs
+from mechanisms.GT import solve_gt_game_from_margin_matrix
+
+
+@njit
+def _compute_rank_vectors_numba(all_rankings_array, n_perms, m):
+    """
+    Numba-optimized computation of rank vectors.
+    
+    Args:
+        all_rankings_array: numpy array of shape [n_perms, m] where each row is a ranking
+        n_perms: Number of permutations
+        m: Number of candidates
+    
+    Returns:
+        numpy array of shape [n_perms, m] where rank_vectors[k, c] is the rank
+        position of candidate c in permutation k
+    """
+    rank_vectors = np.zeros((n_perms, m))
+    
+    for k in range(n_perms):
+        for rank in range(m):
+            candidate = all_rankings_array[k, rank]
+            rank_vectors[k, candidate] = rank
+    
+    return rank_vectors
+
+
+@njit
+def _compute_expected_margin_matrix_numba(total_x, pairwise_pref, m, n_perms):
+    """
+    Numba-optimized computation of expected margin matrix.
+    
+    Args:
+        total_x: Array of shape [n_perms] with total weight on each permutation
+        pairwise_pref: Array of shape [n_perms, m, m] with pairwise preferences
+        m: Number of candidates
+        n_perms: Number of permutations
+    
+    Returns:
+        numpy array of shape [m, m] representing the expected margin matrix
+    """
+    M = np.zeros((m, m))
+    
+    # M[a,b] = Σ_k total_x[k] * pairwise_pref[k,a,b]
+    for a in range(m):
+        for b in range(m):
+            if a == b:
+                continue
+            M[a, b] = np.sum(total_x * pairwise_pref[:, a, b])
+    
+    return M
+
+
+@njit
+def _compute_scores_sampled_numba(deg, dot_products, n, n_perms):
+    """
+    Numba-optimized computation of scores for sampled variant.
+    
+    Args:
+        deg: Array of shape [n] with degrees for each voter
+        dot_products: Array of shape [n_perms] with dot products <p_tilde, r_k>
+        n: Number of voters
+        n_perms: Number of permutations
+    
+    Returns:
+        numpy array of shape [n, n_perms] where scores[i, k] = -deg[i] * <p_tilde, r_k>
+    """
+    scores = np.zeros((n, n_perms))
+    for i in range(n):
+        for k in range(n_perms):
+            scores[i, k] = -deg[i] * dot_products[k]
+    return scores
+
+
+@njit
+def _compute_scores_expected_numba(adj, expected_rank_vectors, p_tilde, deg, dot_products, n, n_perms, m):
+    """
+    Numba-optimized computation of scores for expected-score variant.
+    
+    Args:
+        adj: Adjacency matrix of shape [n, n]
+        expected_rank_vectors: Array of shape [n, m] with expected rank vectors
+        p_tilde: Array of shape [m] with centered outcome distribution
+        deg: Array of shape [n] with degrees for each voter
+        dot_products: Array of shape [n_perms] with dot products <p_tilde, r_k>
+        n: Number of voters
+        n_perms: Number of permutations
+        m: Number of candidates
+    
+    Returns:
+        numpy array of shape [n, n_perms] with scores
+    """
+    # Compute neighbor contribution: Σ_{j:{i,j}∈E} <p̃, E_r_j>
+    neighbor_scores = np.zeros(n)
+    for i in range(n):
+        for j in range(n):
+            if adj[i, j] > 0:
+                # Compute <p_tilde, expected_rank_vectors[j]>
+                dot = 0.0
+                for c in range(m):
+                    dot += p_tilde[c] * expected_rank_vectors[j, c]
+                neighbor_scores[i] += dot
+    
+    # Compute scores for all voters and permutations
+    # scores[i, k] = neighbor_scores[i] - deg[i] * <p_tilde, r_k>
+    scores = np.zeros((n, n_perms))
+    for i in range(n):
+        for k in range(n_perms):
+            scores[i, k] = neighbor_scores[i] - deg[i] * dot_products[k]
+    
+    return scores
 
 
 class GTStrategy(BaseStrategy):
@@ -180,7 +292,11 @@ class GTStrategy(BaseStrategy):
             if self.use_expected_score:
                 # Expected-score variant: use expected margin matrix (deterministic)
                 M = self._compute_expected_margin_matrix(x, all_rankings, m)
-                p_t = self._solve_gt_game_from_margin_matrix(M, m)
+                try:
+                    p_t = solve_gt_game_from_margin_matrix(M, m)
+                except ValueError:
+                    # Fallback to uniform distribution if LP fails
+                    p_t = np.ones(m) / m
             else:
                 # Sampled variant: sample rankings and aggregate
                 current_rankings = self._sample_rankings_from_distribution(
@@ -255,14 +371,11 @@ class GTStrategy(BaseStrategy):
             position of candidate c in permutation k
         """
         n_perms = len(all_rankings)
-        rank_vectors = np.zeros((n_perms, m))
-        
-        for k, ranking in enumerate(all_rankings):
-            for rank, candidate in enumerate(ranking):
-                rank_vectors[k, candidate] = rank
-        
+        # Convert list of tuples to numpy array for numba compatibility
+        all_rankings_array = np.array([list(ranking) for ranking in all_rankings])
+        rank_vectors = _compute_rank_vectors_numba(all_rankings_array, n_perms, m)
         return rank_vectors
-    
+
     def _initialize_strategy_distribution(self, n, n_perms, baselines):
         """
         Initialize strategy distribution x where each voter starts with probability 1.0
@@ -324,7 +437,6 @@ class GTStrategy(BaseStrategy):
             numpy array of shape [m, m] representing the expected margin matrix
         """
         n, n_perms = x.shape
-        M = np.zeros((m, m))
         
         # Precompute pairwise preferences for all permutations
         # pairwise_pref[k, a, b] = 1 if a>b in perm k, -1 if b>a, 0 if a==b
@@ -347,63 +459,10 @@ class GTStrategy(BaseStrategy):
         # Sum x across voters -> total weight on each permutation
         total_x = np.sum(x, axis=0)  # Shape: [n_perms]
         
-        # M[a,b] = Σ_k total_x[k] * pairwise_pref[k,a,b]
-        for a in range(m):
-            for b in range(m):
-                if a == b:
-                    continue
-                M[a, b] = np.sum(total_x * pairwise_pref[:, a, b])
+        # Use numba-optimized function for the matrix computation
+        M = _compute_expected_margin_matrix_numba(total_x, pairwise_pref, m, n_perms)
         
         return M
-    
-    def _solve_gt_game_from_margin_matrix(self, M, m):
-        """
-        Solve GT game from margin matrix using linear programming.
-        
-        Solves max_p min_q p^T M q, which is equivalent to finding the Nash
-        equilibrium mixed strategy for the zero-sum game defined by margin matrix M.
-        
-        Args:
-            M: Margin matrix, shape [m, m]
-            m: Number of candidates
-        
-        Returns:
-            numpy array of shape [m] representing the probability distribution over candidates
-        """
-        from scipy.optimize import linprog
-        
-        # Single candidate case
-        if m == 1:
-            return np.array([1.0])
-        
-        # LP formulation: Maximize v subject to M^T p >= v * 1, sum(p) = 1, p >= 0
-        # For scipy.optimize.linprog (minimizes), reformulate as:
-        # Minimize: -v
-        # Subject to: -M^T p + v <= 0, sum(p) = 1, p >= 0, v unbounded
-        
-        # Variables: [p_0, ..., p_{m-1}, v]
-        c = np.zeros(m + 1)
-        c[-1] = -1.0  # Minimize -v (maximize v)
-        
-        # Constraints: M^T p >= v  =>  -M^T p + v <= 0
-        A_ub = np.hstack([-M.T, np.ones((m, 1))])
-        b_ub = np.zeros(m)
-        
-        # Equality constraint: sum(p) = 1
-        A_eq = np.zeros((1, m + 1))
-        A_eq[0, :m] = 1.0
-        b_eq = np.array([1.0])
-        
-        # Bounds: p_i >= 0 for all i, v is unbounded
-        bounds = [(0, None) for _ in range(m)] + [(None, None)]
-        
-        res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
-        
-        if res.success:
-            return res.x[:m]
-        else:
-            # Fallback to uniform distribution
-            return np.ones(m) / m
     
     def _update_strategy_distribution(self, x, p_tilde, baselines, rank_vectors, deg, graph=None):
         """
@@ -450,31 +509,20 @@ class GTStrategy(BaseStrategy):
             # expected_rank_vectors: [n, m] where expected_rank_vectors[i] = Σ_k x[i,k] * rank_vectors[k]
             expected_rank_vectors = x @ rank_vectors  # Shape: [n, m]
             
-            # Compute scores: s̄_i(π) = Σ_{j:{i,j}∈E} <p̃, E_r_j - r_π>
-            # This expands to: Σ_{j:{i,j}∈E} <p̃, E_r_j> - |N(i)| * <p̃, r_π>
-            # First term is constant w.r.t. π, so we can drop it in softmax (but compute for correctness)
-            
-            # Compute neighbor contribution: Σ_{j:{i,j}∈E} <p̃, E_r_j>
-            # adj: [n, n], expected_rank_vectors: [n, m], p_tilde: [m]
-            # neighbor_scores: [n] where neighbor_scores[i] = Σ_j adj[i,j] * <p_tilde, expected_rank_vectors[j]>
-            neighbor_scores = adj @ (expected_rank_vectors @ p_tilde)  # Shape: [n]
-            
-            # Compute scores for all voters and permutations
-            # scores[i, k] = neighbor_scores[i] - deg[i] * <p_tilde, r_k>
-            # The neighbor_scores term is constant w.r.t. k, so it will cancel in softmax
+            # Precompute dot products: rank_vectors @ p_tilde gives [n_perms]
             dot_products = rank_vectors @ p_tilde  # Shape: [n_perms]
-            scores = (neighbor_scores[:, np.newaxis] - 
-                     deg[:, np.newaxis] * dot_products[np.newaxis, :])  # Shape: [n, n_perms]
+            
+            # Use numba-optimized function for score computation
+            scores = _compute_scores_expected_numba(
+                adj, expected_rank_vectors, p_tilde, deg, dot_products, n, n_perms, m
+            )
         else:
             # Sampled variant: simplified score computation
             # Precompute dot products: rank_vectors @ p_tilde gives [n_perms]
             dot_products = rank_vectors @ p_tilde  # Shape: [n_perms]
             
-            # Compute scores for all voters and permutations using broadcasting
-            # deg: shape (n,), dot_products: shape (n_perms,)
-            # scores: shape (n, n_perms) where scores[i, k] = -deg[i] * <p_tilde, r_k>
-            # This implements Term B: -|N(i)| * <p_tilde, r_pi> for each voter i and permutation k
-            scores = -deg[:, np.newaxis] * dot_products[np.newaxis, :]  # Shape: [n, n_perms]
+            # Use numba-optimized function for score computation
+            scores = _compute_scores_sampled_numba(deg, dot_products, n, n_perms)
         
         # Logit response: normalize scores per voter to avoid overflow
         # Subtract max per voter (along permutation axis)

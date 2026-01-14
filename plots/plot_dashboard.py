@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from core.rankings_core import candidate_labels
 from core.phase_transition import warp_alpha_axis
 from plots.plot_voter_strategies import plot_voter_strategies
-from plots.plot_ternary import _project_ternary
+from plots.plot_ternary import plot_single_ternary
 from plots.plot_proportions import plot_proportions
 from plots.BasePlot import BasePlot
 
@@ -114,66 +114,58 @@ class DashboardPlot(BasePlot):
         if ternary is not None and ternary.get("traj_before") is not None and ternary.get("traj_after") is not None:
             traj_before = ternary["traj_before"]
             traj_after = ternary["traj_after"]
-            T = len(traj_before)
+            
+            # Get initial baseline outcome if available (for "Start" point)
+            p_initial_baseline = ternary.get("p_initial_baseline")
             
             # Create nested grid for two ternary plots in bottom-left quadrant
             # Use more vertical space by adjusting hspace and reducing bottom padding
             gs_ternary = gs[1, 0].subgridspec(1, 2, hspace=0.3, wspace=0.3)
             
-            # Plot Before Threshold
+            # Plot Before Threshold using reusable function
             ax_tern_before = fig.add_subplot(gs_ternary[0, 0])
-            avg_traj_before = np.cumsum(traj_before, axis=0) / np.arange(1, T + 1)[:, None]
+            handles_before, labels_legend = plot_single_ternary(
+                ax_tern_before,
+                traj_before,
+                p_initial_baseline=p_initial_baseline,
+                labels=labels,
+                title=f"(b) Before Threshold\n$\\alpha={alpha_before:.3f}$",
+                show_instantaneous=True,
+                show_running_avg=True,
+                show_start=True,
+                show_end=True,
+                instant_alpha=0.3,
+                instant_lw=0.5,
+                avg_lw=2,
+                use_gradient=True,  # Use gradient color from start to finish
+                show_labels=False,  # Dashboard handles label positioning manually
+                title_fontsize=self.PLOT_TITLE_FONTSIZE,  # Use dashboard font size
+                label_fontsize=self.PLOT_AXIS_LABEL_FONTSIZE  # Use dashboard font size
+            )
             
-            tri_x = [0, 1, 0.5, 0]
-            tri_y = [0, 0, np.sqrt(3)/2, 0]
-            ax_tern_before.plot(tri_x, tri_y, 'k-', lw=1)
-            # Labels will be repositioned after setting axes limits
-            
-            ix_before, iy_before = _project_ternary(traj_before)
-            ax_tern_before.plot(ix_before, iy_before, 'gray', alpha=0.3, lw=0.5, label='Instantaneous $p^t$')
-            
-            ax_before, ay_before = _project_ternary(avg_traj_before)
-            ax_tern_before.plot(ax_before, ay_before, 'b-', lw=2, label='Running Avg')
-            ax_tern_before.scatter(ax_before[0], ay_before[0], c='red', marker='x', s=100, label='Start', zorder=10)
-            ax_tern_before.scatter(ax_before[-1], ay_before[-1], c='blue', marker='*', s=150, label='End (Avg)', zorder=10)
-            
-            # #region agent log
-            with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
-                title_before = f"(b) Before Threshold\n$\\alpha={alpha_before:.3f}$"
-                f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"L","location":"plot_dashboard.py:136","message":"Setting before threshold title","data":{{"alpha_before":{alpha_before},"alpha_before_rounded":{round(alpha_before, 3) if alpha_before is not None else None},"title":{repr(title_before)}}}}}\n')
-            # #endregion
-            ax_tern_before.set_title(f"(b) Before Threshold\n$\\alpha={alpha_before:.3f}$", 
-                                    fontsize=self.PLOT_TITLE_FONTSIZE, pad=20, fontweight='bold')
-            ax_tern_before.axis('off')
-            ax_tern_before.set_aspect('equal')
-            
-            # Plot After Threshold
+            # Plot After Threshold using reusable function
             ax_tern_after = fig.add_subplot(gs_ternary[0, 1])
-            avg_traj_after = np.cumsum(traj_after, axis=0) / np.arange(1, T + 1)[:, None]
+            handles_after, _ = plot_single_ternary(
+                ax_tern_after,
+                traj_after,
+                p_initial_baseline=p_initial_baseline,
+                labels=labels,
+                title=f"(c) After Threshold\n$\\alpha={alpha_after:.3f}$",
+                show_instantaneous=True,
+                show_running_avg=True,
+                show_start=True,
+                show_end=True,
+                instant_alpha=0.3,
+                instant_lw=0.5,
+                avg_lw=2,
+                use_gradient=True,  # Use gradient color from start to finish
+                show_labels=False,  # Dashboard handles label positioning manually
+                title_fontsize=self.PLOT_TITLE_FONTSIZE,  # Use dashboard font size
+                label_fontsize=self.PLOT_AXIS_LABEL_FONTSIZE  # Use dashboard font size
+            )
             
-            ax_tern_after.plot(tri_x, tri_y, 'k-', lw=1)
-            # Labels will be repositioned after setting axes limits
-            
-            ix_after, iy_after = _project_ternary(traj_after)
-            ax_tern_after.plot(ix_after, iy_after, 'gray', alpha=0.3, lw=0.5, label='Instantaneous $p^t$')
-            
-            ax_after, ay_after = _project_ternary(avg_traj_after)
-            ax_tern_after.plot(ax_after, ay_after, 'b-', lw=2, label='Running Avg')
-            ax_tern_after.scatter(ax_after[0], ay_after[0], c='red', marker='x', s=100, label='Start', zorder=10)
-            ax_tern_after.scatter(ax_after[-1], ay_after[-1], c='blue', marker='*', s=150, label='End (Avg)', zorder=10)
-            
-            # #region agent log
-            with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
-                title_after = f"(c) After Threshold\n$\\alpha={alpha_after:.3f}$"
-                f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"M","location":"plot_dashboard.py:156","message":"Setting after threshold title","data":{{"alpha_after":{alpha_after},"alpha_after_rounded":{round(alpha_after, 3) if alpha_after is not None else None},"threshold_alpha":{threshold_alpha},"threshold_rounded":{round(threshold_alpha, 3) if threshold_alpha is not None else None},"title":{repr(title_after)}}}}}\n')
-            # #endregion
-            ax_tern_after.set_title(f"(c) After Threshold\n$\\alpha={alpha_after:.3f}$", 
-                                   fontsize=self.PLOT_TITLE_FONTSIZE, pad=20, fontweight='bold')
-            ax_tern_after.axis('off')
-            ax_tern_after.set_aspect('equal')
-            
-            # Get legend handles and labels from either plot (they're the same)
-            handles, labels_legend = ax_tern_before.get_legend_handles_labels()
+            # Get legend handles and labels (they're the same for both plots)
+            handles = handles_before
             
             # Set explicit axes limits to tightly bound the triangles and use more vertical space
             sqrt3_half = np.sqrt(3) / 2
@@ -224,17 +216,20 @@ class DashboardPlot(BasePlot):
             
             # Update legend position based on new axes positions
             bbox_before = ax_tern_before.get_position()
-            # Move legend left (reduce x) and up (increase y)
-            legend_x = (bbox_before.x0 + bbox_after.x1) / 2 - 0.03  # Shift left (greater negative number means more left)
-            legend_y = max(0.02, bbox_before.y0 - 0.06)  # Move up (greater negative number means lower)
+            bbox_after = ax_tern_after.get_position()
+            # Position legend at the middle of the two ternary plots
+            # Horizontally: between the two plots
+            legend_x = (bbox_before.x1 + bbox_after.x0) / 2 - 0.11  # Shift left (greater negative number means more left)
+            # Vertically: centered on the plots
+            legend_y = (bbox_before.y0 + bbox_before.y1) / 2 + 0.05  # Move up (greater negative number means lower)
             
-            # Create legend below plots
+            # Create legend between plots (1 column, 4 rows)
             fig.legend(handles, labels_legend, 
-                      loc='upper center',
+                      loc='center left',
                       bbox_to_anchor=(legend_x, legend_y),
                       fontsize=self.PLOT_LEGEND_FONTSIZE,
                       frameon=True,
-                      ncol=4)
+                      ncol=1)
         else:
             ax_placeholder = fig.add_subplot(gs[1, 0])
             ax_placeholder.axis('off')
@@ -353,34 +348,64 @@ class DashboardPlot(BasePlot):
             
             # Position legends/colorbars at the right margin of the main figure
             # Use figure coordinates - position at right edge (1.0) to glue to margin
-            # Calculate from right edge: colorbar width will determine left edge position
+            # Calculate from right edge: use maximum of colorbar and legend widths
             figure_right_edge = 1.0
             cbar_width = 0.015  # Width of colorbar
-            legend_start_x = figure_right_edge - cbar_width  # Position so right edge is at figure edge
             
-            # Calculate main plot width - leave gap before legend to prevent overlap
-            # Leave ~0.05 gap between main plot and legend
-            target_right_main = legend_start_x - 0.05
+            # Get proportions legend width if it exists (before it gets removed/repositioned)
+            proportions_legend = ax_proportions.get_legend()
+            legend_width = 0.0
+            if proportions_legend is not None:
+                try:
+                    # Get legend width in figure coordinates
+                    legend_bbox = proportions_legend.get_window_extent()
+                    legend_bbox_fig = legend_bbox.transformed(fig.transFigure.inverted())
+                    legend_width = legend_bbox_fig.width
+                except:
+                    # Fallback: estimate legend width (typically ~0.03-0.04 for 3 candidates)
+                    legend_width = 0.035
             
-            # Calculate new positions - both plots should have the same main plot area
+            # Use the maximum width to ensure both colorbar and legend fit
+            # Add some safety margin
+            max_sidebar_width = max(cbar_width, legend_width, 0.02) + 0.01  # Extra 0.01 for safety
+            legend_start_x = figure_right_edge - max_sidebar_width  # Position so right edge is at figure edge
+            
+            # Calculate main plot width - leave gap before legend/colorbar to prevent overlap
+            # Leave larger gap (0.08) between main plot and legend to prevent overlap
+            target_right_main = legend_start_x - 0.08
+            
+            # Calculate new positions - both plots should have the same main plot area width
             new_width = target_right_main - target_left
+            
+            # Ensure width is positive
+            if new_width <= 0:
+                new_width = min(bbox_heat.width, bbox_proportions.width)
             
             # Set new positions for both axes (same width, aligned left edge)
             ax_heat.set_position([target_left, bbox_heat.y0, new_width, bbox_heat.height])
             ax_proportions.set_position([target_left, bbox_proportions.y0, new_width, bbox_proportions.height])
             
-            # Adjust the legend position in proportions plot - keep original positioning
-            # The "A, B, C" legend was already correctly positioned, don't change it
+            # Verify both plots now have the same width
+            bbox_heat_after = ax_heat.get_position()
+            bbox_proportions_after = ax_proportions.get_position()
+            # Force same width if they differ (shouldn't happen, but safety check)
+            if abs(bbox_heat_after.width - bbox_proportions_after.width) > 0.001:
+                final_width = min(bbox_heat_after.width, bbox_proportions_after.width)
+                ax_heat.set_position([target_left, bbox_heat_after.y0, final_width, bbox_heat_after.height])
+                ax_proportions.set_position([target_left, bbox_proportions_after.y0, final_width, bbox_proportions_after.height])
+            
+            # Adjust the legend position in proportions plot - position it further right to avoid overlap
             legend = ax_proportions.get_legend()
             if legend is not None:
                 # Remove the old legend
                 legend.remove()
-                # Create new legend with original positioning (was correct)
+                # Create new legend positioned further right
                 handles, labels_legend = ax_proportions.get_legend_handles_labels()
-                # Keep original positioning: bbox_to_anchor with loc='upper left'
+                # Position legend at figure right edge minus small margin to ensure it's outside plot
+                legend_x = figure_right_edge + 0.04  # Move further to the right
                 ax_proportions.legend(
                     handles, labels_legend,
-                    bbox_to_anchor=(legend_start_x, 1.0),
+                    bbox_to_anchor=(legend_x, 1.0),
                     loc='upper left',
                     framealpha=0.9,
                     fontsize=self.PLOT_LEGEND_FONTSIZE
@@ -406,12 +431,58 @@ class DashboardPlot(BasePlot):
             plt.tight_layout()
         
         # Apply manual subplot adjustments: left, bottom, right, top, wspace, hspace
-        # These values were determined through interactive adjustment
-        fig.subplots_adjust(left=0.07, bottom=0.073, right=0.932, top=0.918, wspace=0.24, hspace=0.195)
+        # Move right column closer to right margin and increase gap between columns
+        fig.subplots_adjust(left=0.07, bottom=0.073, right=0.97, top=0.918, wspace=0.5, hspace=0.195)
+        
+        # Shift right column subplots further right to minimize blank space on the right
+        # Get current positions of right column subplots
+        bbox_heat_current = ax_heat.get_position()
+        bbox_proportions_current = ax_proportions.get_position()
+        
+        # Calculate optimal right edge position accounting for colorbar/legend
+        # Estimate space needed: colorbar (~0.015) + legend (~0.04) + gap (~0.01) = ~0.065
+        figure_right_edge = 1.0
+        sidebar_width_estimate = 0.065  # Space for colorbar + legend + gap
+        target_right_edge = figure_right_edge - sidebar_width_estimate
+        
+        # Calculate shift needed for both plots
+        # Use the rightmost plot's right edge as reference
+        current_rightmost = max(bbox_heat_current.x1, bbox_proportions_current.x1)
+        shift_right = target_right_edge - current_rightmost
+        
+        # Only shift if there's significant space to the right (more than 0.02)
+        if shift_right > 0.02:
+            # Shift both right column subplots while maintaining their width
+            ax_heat.set_position([
+                bbox_heat_current.x0 + shift_right,
+                bbox_heat_current.y0,
+                bbox_heat_current.width,
+                bbox_heat_current.height
+            ])
+            ax_proportions.set_position([
+                bbox_proportions_current.x0 + shift_right,
+                bbox_proportions_current.y0,
+                bbox_proportions_current.width,
+                bbox_proportions_current.height
+            ])
         
         # Final repositioning of colorbar AFTER subplots_adjust to ensure it's glued to right margin
         # This ensures the colorbar stays at the figure's right edge (1.0) even after layout adjustments
+        # Also ensure both right-side plots still have the same width after subplots_adjust
         if strategies is not None and perms is not None:
+            # Re-check and align widths after subplots_adjust (which may have changed positions)
+            bbox_heat_final = ax_heat.get_position()
+            bbox_proportions_final = ax_proportions.get_position()
+            
+            # If widths differ, make them the same (use the smaller width to be safe)
+            if abs(bbox_heat_final.width - bbox_proportions_final.width) > 0.001:
+                target_left_final = min(bbox_heat_final.x0, bbox_proportions_final.x0)
+                final_width = min(bbox_heat_final.width, bbox_proportions_final.width)
+                ax_heat.set_position([target_left_final, bbox_heat_final.y0, final_width, bbox_heat_final.height])
+                ax_proportions.set_position([target_left_final, bbox_proportions_final.y0, final_width, bbox_proportions_final.height])
+                # Update bbox references after repositioning
+                bbox_heat_final = ax_heat.get_position()
+                bbox_proportions_final = ax_proportions.get_position()
             from matplotlib.colorbar import Colorbar
             cbar = None
             # Find the colorbar again after subplots_adjust
@@ -431,10 +502,38 @@ class DashboardPlot(BasePlot):
             
             if cbar is not None:
                 # Position colorbar so its right edge is at figure edge (1.0)
+                # Use same calculation as earlier to maintain consistency
                 figure_right_edge = 1.0
                 cbar_width = 0.015
-                legend_start_x = figure_right_edge - cbar_width
-                cbar.ax.set_position([legend_start_x, bbox_heat_final.y0, cbar_width, bbox_heat_final.height])
+                # Get proportions legend width for consistency
+                proportions_legend_final = ax_proportions.get_legend()
+                legend_width_final = 0.0
+                if proportions_legend_final is not None:
+                    try:
+                        legend_bbox_final = proportions_legend_final.get_window_extent()
+                        legend_bbox_fig_final = legend_bbox_final.transformed(fig.transFigure.inverted())
+                        legend_width_final = legend_bbox_fig_final.width
+                    except:
+                        legend_width_final = 0.035
+                max_sidebar_width_final = max(cbar_width, legend_width_final, 0.02) + 0.01
+                legend_start_x_final = figure_right_edge - max_sidebar_width_final
+                cbar.ax.set_position([legend_start_x_final, bbox_heat_final.y0, cbar_width, bbox_heat_final.height])
+                
+                # Also reposition proportions legend to use same x position for consistency
+                # Position legend further right to avoid overlap with plot
+                if proportions_legend_final is not None:
+                    proportions_legend_final.remove()
+                    handles_final, labels_legend_final = ax_proportions.get_legend_handles_labels()
+                    # Position legend further right - use figure edge plus offset
+                    # This ensures the legend is clearly outside the plot area
+                    legend_x_final = figure_right_edge + 0.04  # Move further to the right
+                    ax_proportions.legend(
+                        handles_final, labels_legend_final,
+                        bbox_to_anchor=(legend_x_final, 1.0),
+                        loc='upper left',
+                        framealpha=0.9,
+                        fontsize=self.PLOT_LEGEND_FONTSIZE
+                    )
         
         return fig
 
