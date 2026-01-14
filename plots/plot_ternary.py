@@ -92,16 +92,25 @@ def plot_single_ternary(ax, traj, p_initial_baseline=None, labels=None, title=No
         running_avg = np.cumsum(traj, axis=0) / np.arange(1, T + 1)[:, None]
     
     # Draw simplex triangle
-    tri_x = [0, 1, 0.5, 0]
-    tri_y = [0, 0, np.sqrt(3) / 2, 0]
+    # Scale triangle to make it larger (scale factor > 1.0)
+    scale_factor = 2.0  # Increase triangle size by 100% (double the size)
+    tri_x_base = [0, 1, 0.5, 0]
+    tri_y_base = [0, 0, np.sqrt(3) / 2, 0]
+    # Center of triangle is at (0.5, sqrt(3)/6)
+    center_x = 0.5
+    center_y = np.sqrt(3) / 6
+    # Scale around center
+    tri_x = [(x - center_x) * scale_factor + center_x for x in tri_x_base]
+    tri_y = [(y - center_y) * scale_factor + center_y for y in tri_y_base]
     ax.plot(tri_x, tri_y, "k-", lw=1.5)
     
     # Add candidate labels at triangle vertices (optional, for custom positioning)
     if show_labels:
-        ax.text(0.5, np.sqrt(3) / 2 + 0.02, f"Cand {labels[0]}", ha="center", 
+        # Use scaled triangle vertices for label positioning
+        ax.text(tri_x[2], tri_y[2] + 0.02, f"Cand {labels[0]}", ha="center", 
                 fontsize=label_fontsize, va="bottom")
-        ax.text(1.02, -0.05, f"Cand {labels[1]}", ha="center", fontsize=label_fontsize, va="top")
-        ax.text(-0.02, -0.05, f"Cand {labels[2]}", ha="center", fontsize=label_fontsize, va="top")
+        ax.text(tri_x[1] + 0.02, tri_y[1] - 0.05, f"Cand {labels[1]}", ha="center", fontsize=label_fontsize, va="top")
+        ax.text(tri_x[0] - 0.02, tri_y[0] - 0.05, f"Cand {labels[2]}", ha="center", fontsize=label_fontsize, va="top")
     
     # Prepend initial baseline to instantaneous trajectory so it starts from the X mark
     if p_initial_baseline is not None:
@@ -112,6 +121,13 @@ def plot_single_ternary(ax, traj, p_initial_baseline=None, labels=None, title=No
     # Project trajectories
     inst_x, inst_y = _project_ternary(traj_instant)
     avg_x, avg_y = _project_ternary(running_avg)
+    
+    # Scale projected coordinates to match the scaled triangle border
+    # Use the same scale_factor and center as the triangle
+    inst_x = (inst_x - center_x) * scale_factor + center_x
+    inst_y = (inst_y - center_y) * scale_factor + center_y
+    avg_x = (avg_x - center_x) * scale_factor + center_x
+    avg_y = (avg_y - center_y) * scale_factor + center_y
     
     handles = []
     labels_legend = []
@@ -163,6 +179,9 @@ def plot_single_ternary(ax, traj, p_initial_baseline=None, labels=None, title=No
     if show_start:
         if p_initial_baseline is not None:
             start_x, start_y = _project_ternary(p_initial_baseline.reshape(1, -1))
+            # Scale to match the scaled triangle
+            start_x = (start_x - center_x) * scale_factor + center_x
+            start_y = (start_y - center_y) * scale_factor + center_y
             marker_start = ax.scatter(start_x[0], start_y[0], c="red", marker="x", 
                                      s=100, label="Start", zorder=10)
         else:

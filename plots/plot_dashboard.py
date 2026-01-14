@@ -120,7 +120,7 @@ class DashboardPlot(BasePlot):
             
             # Create nested grid for two ternary plots in bottom-left quadrant
             # Use more vertical space by adjusting hspace and reducing bottom padding
-            gs_ternary = gs[1, 0].subgridspec(1, 2, hspace=0.3, wspace=0.3)
+            gs_ternary = gs[1, 0].subgridspec(1, 2, hspace=0.2, wspace=0.2)
             
             # Plot Before Threshold using reusable function
             ax_tern_before = fig.add_subplot(gs_ternary[0, 0])
@@ -168,34 +168,46 @@ class DashboardPlot(BasePlot):
             handles = handles_before
             
             # Set explicit axes limits to tightly bound the triangles and use more vertical space
+            # Triangle is scaled by 2.0 in plot_single_ternary, so adjust limits accordingly
             sqrt3_half = np.sqrt(3) / 2
-            # Calculate padding to accommodate labels
-            x_pad = 0.12
-            y_pad_top = 0.15  # Extra space for top label and title
-            y_pad_bottom = 0.12  # Extra space for bottom labels
+            scale_factor = 2.0  # Match the scale factor used in plot_single_ternary
+            center_x = 0.5
+            center_y = np.sqrt(3) / 6
+            # Calculate triangle bounds after scaling
+            tri_x_min = (0 - center_x) * scale_factor + center_x  # = -0.5
+            tri_x_max = (1 - center_x) * scale_factor + center_x  # = 1.5
+            tri_y_min = (0 - center_y) * scale_factor + center_y  # ≈ -0.289
+            tri_y_max = (sqrt3_half - center_y) * scale_factor + center_y  # ≈ 1.443
+            # Calculate padding to accommodate labels (reduced to minimize blank space)
+            x_pad = 0.08  # Reduced padding
+            x_pad_left = 0.2  # Minimal left padding for left plot to glue it to left margin
+            y_pad_top = 0.10  # Reduced padding for top label and title
+            y_pad_bottom = 0.08  # Reduced padding for bottom labels
             
-            ax_tern_before.set_xlim(-x_pad, 1 + x_pad)
-            ax_tern_before.set_ylim(-y_pad_bottom, sqrt3_half + y_pad_top)
+            # Left plot: minimal left padding to glue to left margin
+            ax_tern_before.set_xlim(tri_x_min - x_pad_left, tri_x_max + x_pad)
+            ax_tern_before.set_ylim(tri_y_min - y_pad_bottom, tri_y_max + y_pad_top)
             
-            ax_tern_after.set_xlim(-x_pad, 1 + x_pad)
-            ax_tern_after.set_ylim(-y_pad_bottom, sqrt3_half + y_pad_top)
+            # Right plot: keep normal padding
+            ax_tern_after.set_xlim(tri_x_min - x_pad, tri_x_max + x_pad)
+            ax_tern_after.set_ylim(tri_y_min - y_pad_bottom, tri_y_max + y_pad_top)
             
             # Reposition labels to avoid overlap
-            # Top label: move further up to avoid title overlap
-            ax_tern_before.text(0.5, sqrt3_half + 0.08, f'Cand {labels[0]}', ha='center', 
-                               fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='bottom')
-            ax_tern_after.text(0.5, sqrt3_half + 0.08, f'Cand {labels[0]}', ha='center', 
-                              fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='bottom')
-            
-            # Bottom labels: move further down and adjust horizontal spacing
-            ax_tern_before.text(1.05, -0.12, f'Cand {labels[1]}', ha='center', 
+            # Put the top candidate label slightly INSIDE the triangle so it doesn't collide with the title
+            ax_tern_before.text(center_x, tri_y_max - 0.06, f'Cand {labels[0]}', ha='center',
                                fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='top')
-            ax_tern_before.text(-0.05, -0.12, f'Cand {labels[2]}', ha='center', 
-                               fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='top')
-            
-            ax_tern_after.text(1.05, -0.12, f'Cand {labels[1]}', ha='center', 
+            ax_tern_after.text(center_x, tri_y_max - 0.06, f'Cand {labels[0]}', ha='center',
                               fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='top')
-            ax_tern_after.text(-0.05, -0.12, f'Cand {labels[2]}', ha='center', 
+            
+            # Bottom labels: position relative to scaled triangle bottom vertices
+            ax_tern_before.text(tri_x_max + 0.05, tri_y_min - 0.12, f'Cand {labels[1]}', ha='center', 
+                               fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='top')
+            ax_tern_before.text(tri_x_min - 0.05, tri_y_min - 0.12, f'Cand {labels[2]}', ha='center', 
+                               fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='top')
+            
+            ax_tern_after.text(tri_x_max + 0.05, tri_y_min - 0.12, f'Cand {labels[1]}', ha='center', 
+                              fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='top')
+            ax_tern_after.text(tri_x_min - 0.05, tri_y_min - 0.12, f'Cand {labels[2]}', ha='center', 
                               fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='top')
             
             # Expand ternary plots vertically to use more of the available space
@@ -204,15 +216,20 @@ class DashboardPlot(BasePlot):
             bbox_after = ax_tern_after.get_position()
             
             # Expand vertically by increasing height and moving bottom edge down
-            expansion_factor = 1.2  # Expand by 20%
+            expansion_factor = 2.0  # Strong vertical expansion to fill canvas
             new_height = bbox_before.height * expansion_factor
-            # Move bottom edge down to use more space, but leave room for legend
-            new_y0 = max(0.05, bbox_before.y0 - (new_height - bbox_before.height) * 0.4)
+            # Move bottom edge down aggressively so ternary plots sit close to bottom margin
+            # Keep a very small padding (0.02) so labels don't get clipped
+            new_y0 = max(0.02, bbox_before.y0 - (new_height - bbox_before.height) * 0.9)
             new_height = min(new_height, bbox_before.y1 - new_y0)  # Don't exceed top
             
-            # Apply new positions
-            ax_tern_before.set_position([bbox_before.x0, new_y0, bbox_before.width, new_height])
-            ax_tern_after.set_position([bbox_after.x0, new_y0, bbox_after.width, new_height])
+            # Store original widths to preserve them
+            tern_before_width = bbox_before.width
+            tern_after_width = bbox_after.width
+            
+            # Apply new vertical positions (horizontal will be adjusted later after subplots_adjust)
+            ax_tern_before.set_position([bbox_before.x0, new_y0, tern_before_width, new_height])
+            ax_tern_after.set_position([bbox_after.x0, new_y0, tern_after_width, new_height])
             
             # Update legend position based on new axes positions
             bbox_before = ax_tern_before.get_position()
@@ -224,7 +241,7 @@ class DashboardPlot(BasePlot):
             legend_y = (bbox_before.y0 + bbox_before.y1) / 2 + 0.05  # Move up (greater negative number means lower)
             
             # Create legend between plots (1 column, 4 rows)
-            fig.legend(handles, labels_legend, 
+            ternary_legend = fig.legend(handles, labels_legend,
                       loc='center left',
                       bbox_to_anchor=(legend_x, legend_y),
                       fontsize=self.PLOT_LEGEND_FONTSIZE,
@@ -433,6 +450,65 @@ class DashboardPlot(BasePlot):
         # Apply manual subplot adjustments: left, bottom, right, top, wspace, hspace
         # Move right column closer to right margin and increase gap between columns
         fig.subplots_adjust(left=0.07, bottom=0.073, right=0.97, top=0.918, wspace=0.5, hspace=0.195)
+
+        # After the final layout pass, force the ternary axes to sit very close to the bottom margin
+        # and maximize horizontal separation (left plot glued to left margin, right plot glued to right edge of subplot).
+        # (subplots_adjust can move them back up, so we do this at the end.)
+        if ternary is not None and 'ax_tern_before' in locals() and 'ax_tern_after' in locals():
+            bbox_before_final = ax_tern_before.get_position()
+            bbox_after_final = ax_tern_after.get_position()
+
+            target_y0 = 0.02  # "almost glued" to the bottom of the main figure (only ternary axes)
+            # Preserve the current top edge; just slide the bottom down to target_y0.
+            new_height_final = max(0.01, bbox_before_final.y1 - target_y0)
+
+            # Horizontal repositioning: maximize separation within the bottom-left subplot region
+            # Variable to control spacing (for future flexibility, though we'll maximize it here)
+            ternary_horizontal_spacing = 0.0  # Minimum spacing between plots (can be increased if needed)
+            
+            # Get the bounds of the bottom-left subplot region (gs[1, 0])
+            # After subplots_adjust, get the actual position from the gridspec
+            gs_bottom_left_bbox = gs[1, 0].get_position(fig)
+            subplot_right_edge = gs_bottom_left_bbox.x1
+            
+            # Left margin of main figure - use a very small value to glue left plot to screen edge
+            figure_left_margin = 0.02  # Almost glued to left edge of screen
+            
+            # Preserve the widths
+            tern_before_width = bbox_before_final.width
+            tern_after_width = bbox_after_final.width
+            
+            # Position left ternary plot: left edge glued to figure's left margin (almost screen edge)
+            tern_before_x0 = figure_left_margin
+            
+            # Position right ternary plot: right edge glued to subplot's right edge
+            tern_after_x1 = subplot_right_edge
+            tern_after_x0 = tern_after_x1 - tern_after_width
+            
+            # Ensure there's at least the minimum spacing between plots
+            if tern_after_x0 < tern_before_x0 + tern_before_width + ternary_horizontal_spacing:
+                # If plots would overlap, adjust: keep left plot at left margin, 
+                # and position right plot with minimum spacing
+                tern_after_x0 = tern_before_x0 + tern_before_width + ternary_horizontal_spacing
+                tern_after_x1 = tern_after_x0 + tern_after_width
+                # If this pushes the right plot beyond the subplot edge, shift both plots left
+                if tern_after_x1 > subplot_right_edge:
+                    excess = tern_after_x1 - subplot_right_edge
+                    tern_after_x0 -= excess
+                    tern_after_x1 -= excess
+                    tern_before_x0 -= excess
+            
+            # Apply new positions (vertical and horizontal)
+            ax_tern_before.set_position([tern_before_x0, target_y0, tern_before_width, new_height_final])
+            ax_tern_after.set_position([tern_after_x0, target_y0, tern_after_width, new_height_final])
+
+            # Re-center the ternary legend after shifting the axes
+            if 'ternary_legend' in locals() and ternary_legend is not None:
+                bbox_before_final = ax_tern_before.get_position()
+                bbox_after_final = ax_tern_after.get_position()
+                legend_x_final = (bbox_before_final.x1 + bbox_after_final.x0) / 2 - 0.11
+                legend_y_final = (bbox_before_final.y0 + bbox_before_final.y1) / 2 + 0.05
+                ternary_legend.set_bbox_to_anchor((legend_x_final, legend_y_final), transform=fig.transFigure)
         
         # Shift right column subplots further right to minimize blank space on the right
         # Get current positions of right column subplots
