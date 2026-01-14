@@ -35,7 +35,7 @@ def _project_ternary(p_vec):
 def plot_single_ternary(ax, traj, p_initial_baseline=None, labels=None, title=None, 
                         show_instantaneous=True, show_running_avg=True, show_start=True, show_end=True,
                         instant_alpha=0.3, instant_lw=0.5, avg_lw=2, use_gradient=True, show_labels=True,
-                        title_fontsize=None, label_fontsize=None):
+                        title_fontsize=None, label_fontsize=None, title_pad=None):
     """
     Plot a single ternary trajectory on the given axes.
     

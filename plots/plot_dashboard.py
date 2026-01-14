@@ -117,6 +117,24 @@ class DashboardPlot(BasePlot):
             
             # Get initial baseline outcome if available (for "Start" point)
             p_initial_baseline = ternary.get("p_initial_baseline")
+
+            # Ternary legend placement: single source of truth.
+            # dx < 0 moves left; dy > 0 moves up (figure coordinates).
+            ternary_legend_dx = -0.085
+            ternary_legend_dy = 0.05
+
+            # Ternary top label/title spacing: single source of truth.
+            # Increase these together to move both upward proportionally.
+            ternary_top_label_dy = 0.00  # y offset above the top vertex (data coords)
+            ternary_title_pad = 34      # title padding (points)
+
+            def _ternary_legend_anchor(ax_left, ax_right, dx, dy):
+                """Compute figure-coordinate anchor for the shared ternary legend."""
+                bbox_left = ax_left.get_position()
+                bbox_right = ax_right.get_position()
+                x = (bbox_left.x1 + bbox_right.x0) / 2 + dx
+                y = (bbox_left.y0 + bbox_left.y1) / 2 + dy
+                return x, y
             
             # Create nested grid for two ternary plots in bottom-left quadrant
             # Use more vertical space by adjusting hspace and reducing bottom padding
@@ -140,7 +158,7 @@ class DashboardPlot(BasePlot):
                 use_gradient=True,  # Use gradient color from start to finish
                 show_labels=False,  # Dashboard handles label positioning manually
                 title_fontsize=self.PLOT_TITLE_FONTSIZE,  # Use dashboard font size
-                label_fontsize=self.PLOT_AXIS_LABEL_FONTSIZE  # Use dashboard font size
+                label_fontsize=self.PLOT_AXIS_LABEL_FONTSIZE,  # Use dashboard font size
             )
             
             # Plot After Threshold using reusable function
@@ -161,7 +179,7 @@ class DashboardPlot(BasePlot):
                 use_gradient=True,  # Use gradient color from start to finish
                 show_labels=False,  # Dashboard handles label positioning manually
                 title_fontsize=self.PLOT_TITLE_FONTSIZE,  # Use dashboard font size
-                label_fontsize=self.PLOT_AXIS_LABEL_FONTSIZE  # Use dashboard font size
+                label_fontsize=self.PLOT_AXIS_LABEL_FONTSIZE,  # Use dashboard font size
             )
             
             # Get legend handles and labels (they're the same for both plots)
@@ -181,7 +199,8 @@ class DashboardPlot(BasePlot):
             # Calculate padding to accommodate labels (reduced to minimize blank space)
             x_pad = 0.08  # Reduced padding
             x_pad_left = 0.2  # Minimal left padding for left plot to glue it to left margin
-            y_pad_top = 0.10  # Reduced padding for top label and title
+            # Provide enough headroom for the top label + title.
+            y_pad_top = 0.10 + ternary_top_label_dy
             y_pad_bottom = 0.08  # Reduced padding for bottom labels
             
             # Left plot: minimal left padding to glue to left margin
@@ -193,11 +212,25 @@ class DashboardPlot(BasePlot):
             ax_tern_after.set_ylim(tri_y_min - y_pad_bottom, tri_y_max + y_pad_top)
             
             # Reposition labels to avoid overlap
-            # Put the top candidate label slightly INSIDE the triangle so it doesn't collide with the title
-            ax_tern_before.text(center_x, tri_y_max - 0.06, f'Cand {labels[0]}', ha='center',
-                               fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='top')
-            ax_tern_after.text(center_x, tri_y_max - 0.06, f'Cand {labels[0]}', ha='center',
-                              fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='top')
+            # Put the top candidate label further above the triangle to avoid collision with title
+            ax_tern_before.text(center_x, tri_y_max + ternary_top_label_dy, f'Cand {labels[0]}', ha='center',
+                               fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='bottom')
+            ax_tern_after.text(center_x, tri_y_max + ternary_top_label_dy, f'Cand {labels[0]}', ha='center',
+                              fontsize=self.PLOT_AXIS_LABEL_FONTSIZE, va='bottom')
+
+            # Re-apply title with explicit padding (plot_single_ternary sets a title without pad).
+            ax_tern_before.set_title(
+                f"(b) Before Threshold\n$\\alpha={alpha_before:.3f}$",
+                fontsize=self.PLOT_TITLE_FONTSIZE,
+                fontweight="bold",
+                pad=ternary_title_pad,
+            )
+            ax_tern_after.set_title(
+                f"(c) After Threshold\n$\\alpha={alpha_after:.3f}$",
+                fontsize=self.PLOT_TITLE_FONTSIZE,
+                fontweight="bold",
+                pad=ternary_title_pad,
+            )
             
             # Bottom labels: position relative to scaled triangle bottom vertices
             ax_tern_before.text(tri_x_max + 0.05, tri_y_min - 0.12, f'Cand {labels[1]}', ha='center', 
@@ -234,11 +267,9 @@ class DashboardPlot(BasePlot):
             # Update legend position based on new axes positions
             bbox_before = ax_tern_before.get_position()
             bbox_after = ax_tern_after.get_position()
-            # Position legend at the middle of the two ternary plots
-            # Horizontally: between the two plots
-            legend_x = (bbox_before.x1 + bbox_after.x0) / 2 - 0.11  # Shift left (greater negative number means more left)
-            # Vertically: centered on the plots
-            legend_y = (bbox_before.y0 + bbox_before.y1) / 2 + 0.05  # Move up (greater negative number means lower)
+            legend_x, legend_y = _ternary_legend_anchor(
+                ax_tern_before, ax_tern_after, ternary_legend_dx, ternary_legend_dy
+            )
             
             # Create legend between plots (1 column, 4 rows)
             ternary_legend = fig.legend(handles, labels_legend,
@@ -504,11 +535,12 @@ class DashboardPlot(BasePlot):
 
             # Re-center the ternary legend after shifting the axes
             if 'ternary_legend' in locals() and ternary_legend is not None:
-                bbox_before_final = ax_tern_before.get_position()
-                bbox_after_final = ax_tern_after.get_position()
-                legend_x_final = (bbox_before_final.x1 + bbox_after_final.x0) / 2 - 0.11
-                legend_y_final = (bbox_before_final.y0 + bbox_before_final.y1) / 2 + 0.05
-                ternary_legend.set_bbox_to_anchor((legend_x_final, legend_y_final), transform=fig.transFigure)
+                legend_x_final, legend_y_final = _ternary_legend_anchor(
+                    ax_tern_before, ax_tern_after, ternary_legend_dx, ternary_legend_dy
+                )
+                ternary_legend.set_bbox_to_anchor(
+                    (legend_x_final, legend_y_final), transform=fig.transFigure
+                )
         
         # Shift right column subplots further right to minimize blank space on the right
         # Get current positions of right column subplots
