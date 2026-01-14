@@ -49,6 +49,11 @@ class DashboardPlot(BasePlot):
         threshold_alpha = data["threshold_alpha"]
         alpha_before = data["alpha_before"]
         alpha_after = data["alpha_after"]
+        
+        # #region agent log
+        with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+            f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"K","location":"plot_dashboard.py:51","message":"Plot function received values","data":{{"threshold_alpha":{threshold_alpha},"alpha_before":{alpha_before},"alpha_after":{alpha_after},"alpha_before_rounded":{round(alpha_before, 3) if alpha_before is not None else None},"alpha_after_rounded":{round(alpha_after, 3) if alpha_after is not None else None},"threshold_rounded":{round(threshold_alpha, 3) if threshold_alpha is not None else None}}}}}\n')
+        # #endregion
         strategies = data["heatmap"]["strategies"]
         perms = data["heatmap"]["perms"]
         traj = data["heatmap"]["traj"]
@@ -132,6 +137,11 @@ class DashboardPlot(BasePlot):
             ax_tern_before.scatter(ax_before[0], ay_before[0], c='red', marker='x', s=100, label='Start', zorder=10)
             ax_tern_before.scatter(ax_before[-1], ay_before[-1], c='blue', marker='*', s=150, label='End (Avg)', zorder=10)
             
+            # #region agent log
+            with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                title_before = f"(b) Before Threshold\n$\\alpha={alpha_before:.3f}$"
+                f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"L","location":"plot_dashboard.py:136","message":"Setting before threshold title","data":{{"alpha_before":{alpha_before},"alpha_before_rounded":{round(alpha_before, 3) if alpha_before is not None else None},"title":{repr(title_before)}}}}}\n')
+            # #endregion
             ax_tern_before.set_title(f"(b) Before Threshold\n$\\alpha={alpha_before:.3f}$", 
                                     fontsize=self.PLOT_TITLE_FONTSIZE, pad=20, fontweight='bold')
             ax_tern_before.axis('off')
@@ -152,6 +162,11 @@ class DashboardPlot(BasePlot):
             ax_tern_after.scatter(ax_after[0], ay_after[0], c='red', marker='x', s=100, label='Start', zorder=10)
             ax_tern_after.scatter(ax_after[-1], ay_after[-1], c='blue', marker='*', s=150, label='End (Avg)', zorder=10)
             
+            # #region agent log
+            with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                title_after = f"(c) After Threshold\n$\\alpha={alpha_after:.3f}$"
+                f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"M","location":"plot_dashboard.py:156","message":"Setting after threshold title","data":{{"alpha_after":{alpha_after},"alpha_after_rounded":{round(alpha_after, 3) if alpha_after is not None else None},"threshold_alpha":{threshold_alpha},"threshold_rounded":{round(threshold_alpha, 3) if threshold_alpha is not None else None},"title":{repr(title_after)}}}}}\n')
+            # #endregion
             ax_tern_after.set_title(f"(c) After Threshold\n$\\alpha={alpha_after:.3f}$", 
                                    fontsize=self.PLOT_TITLE_FONTSIZE, pad=20, fontweight='bold')
             ax_tern_after.axis('off')
@@ -227,9 +242,42 @@ class DashboardPlot(BasePlot):
 
         # D. Proportions Plot (Bottom Right Quadrant)
         ax_proportions = fig.add_subplot(gs[1, 1])
-        # Plot proportions using the strategies from the heatmap
-        # strategies is shape [voters, T], we need to pass it with all_rankings
-        if strategies is not None and perms is not None:
+        # Plot proportions using the trajectory from the heatmap (GT mechanism)
+        # This ensures consistency with phase transition plot which also uses GT mechanism
+        traj_heatmap = data["heatmap"].get("traj")
+        if traj_heatmap is not None and strategies is not None and perms is not None:
+            # Use trajectory directly (GT mechanism) instead of recomputing from strategies
+            # traj_heatmap has shape [T, m] where T is number of time steps after burn-in
+            # strategies should also have shape [n, T] to match
+            # #region agent log
+            with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                traj_shape = traj_heatmap.shape if traj_heatmap is not None else None
+                strategies_shape = strategies.shape if strategies is not None else None
+                traj_first = list(traj_heatmap[0]) if traj_heatmap is not None and len(traj_heatmap) > 0 else None
+                traj_last = list(traj_heatmap[-1]) if traj_heatmap is not None and len(traj_heatmap) > 0 else None
+                center = np.array([1 / m] * m)
+                dist_first = float(np.linalg.norm(traj_heatmap[0] - center)) if traj_heatmap is not None and len(traj_heatmap) > 0 else None
+                dist_last = float(np.linalg.norm(traj_heatmap[-1] - center)) if traj_heatmap is not None and len(traj_heatmap) > 0 else None
+                dist_avg_first_50 = float(np.linalg.norm(np.mean(traj_heatmap[:50], axis=0) - center)) if traj_heatmap is not None and len(traj_heatmap) >= 50 else None
+                f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"T","location":"plot_dashboard.py:248","message":"Using trajectory for proportions plot","data":{{"traj_shape":{traj_shape},"strategies_shape":{strategies_shape},"traj_first":{traj_first},"traj_last":{traj_last},"dist_first":{dist_first},"dist_last":{dist_last},"dist_avg_first_50":{dist_avg_first_50},"alpha":{data["heatmap"]["alpha"]}}}}}\n')
+            # #endregion
+            
+            plot_proportions(
+                strategies,
+                m=m,
+                all_rankings=perms,
+                labels=labels,
+                mechanism="pairwise_majority",  # Not used when p_history is provided
+                ax=ax_proportions,
+                title=f"(e) Probability Distribution Evolution $\\alpha={data['heatmap']['alpha']:.3f}$",
+                p_history=traj_heatmap,  # Pass trajectory directly (GT mechanism)
+            )
+        elif strategies is not None and perms is not None:
+            # Fallback: compute from strategies if trajectory not available
+            # #region agent log
+            with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"U","location":"plot_dashboard.py:268","message":"Fallback: computing from strategies","data":{{"alpha":{data["heatmap"]["alpha"]}}}}}\n')
+            # #endregion
             plot_proportions(
                 strategies,
                 m=m,

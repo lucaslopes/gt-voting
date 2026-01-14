@@ -5,10 +5,30 @@ from scipy.optimize import linprog
 from itertools import permutations
 from core.utils import spawn_rng
 from core.graph_utils import compute_degrees
+from strategies import get_strategy_instance
 
 
 class IterativeVotingSystem:
-    def __init__(self, m, n, alpha, eta, beta, baselines=None, rng=None, graph=None):
+    def __init__(self, m, n, alpha, eta, beta, baselines=None, rng=None, graph=None, 
+                 use_expected_score=False, strategy="gt_strategy", mechanism="GT"):
+        """
+        Initialize iterative voting system.
+        
+        Args:
+            m: Number of candidates
+            n: Number of voters
+            alpha: Anchoring parameter (0-1)
+            eta: Learning rate (0-1)
+            beta: Sharpness parameter (>0)
+            baselines: Optional baseline permutation indices
+            rng: Optional random number generator
+            graph: Optional interaction graph
+            use_expected_score: If False, sample rankings (Algorithm 1 line 3). If True, use expected margins.
+            strategy: Strategy name (default: "gt_strategy") or strategy instance.
+                     The strategy defines how voters sample/update their rankings.
+            mechanism: Aggregation mechanism name (default: "GT").
+                      The mechanism defines how rankings are aggregated into outcomes.
+        """
         self.m = m
         self.n = n
         self.alpha = alpha
@@ -16,6 +36,111 @@ class IterativeVotingSystem:
         self.beta = beta
         self.rng = spawn_rng(None, rng)
         self.graph = graph
+        self.use_expected_score = use_expected_score
+        self.mechanism = mechanism
+        
+        # Create or use provided strategy instance
+        # Strategy defines the sampling/aggregation logic (e.g., Algorithm 1 line 3)
+        if isinstance(strategy, str):
+            # Strategy name provided - create instance with appropriate parameters
+            # Build parameter dict with common parameter names that strategies might accept
+            # Strategies will ignore parameters they don't need (via **kwargs or default args)
+            strategy_kwargs = self._build_strategy_kwargs(strategy, alpha, eta, beta, use_expected_score)
+            self.strategy = get_strategy_instance(strategy, **strategy_kwargs)
+        else:
+            # Strategy instance provided directly
+            self.strategy = strategy
+        
+        # Complete graph or a "clique" (all voters are connected to all others)
+        # This is kept for backward compatibility, but degrees are computed from graph
+        self.adj = np.ones((n, n)) - np.eye(n)
+        
+        # Permutations
+        self.perms = list(permutations(range(m)))
+        self.n_perms = len(self.perms)
+        
+        # Rank vectors: [n_perms, m]
+        self.rank_vectors = np.zeros((self.n_perms, m))
+        for i, p in enumerate(self.perms):
+            for rank, candidate in enumerate(p):
+                self.rank_vectors[i, candidate] = rank
+        
+        # Baselines sampled uniformly (reproducible via rng/seed)
+        if baselines is None:
+            self.baselines = self.rng.choice(self.n_perms, size=n)
+        else:
+            self.baselines = np.asarray(baselines)
+            
+        # Initialize X at baselines with small random perturbations
+        # This ensures runs are independent even when baselines are fixed
+        # Use a small but meaningful perturbation (0.1% of baseline weight)
+        self.x = np.zeros((n, self.n_perms))
+        for i, base_idx in enumerate(self.baselines):
+            # Start from one-hot at baseline
+            self.x[i, base_idx] = 1.0
+            # Add small random noise proportional to baseline (0.1% perturbation)
+            noise_scale = 0.001
+            noise = self.rng.uniform(-noise_scale, noise_scale, size=self.n_perms)
+            # Apply noise, ensuring baseline position stays positive
+            self.x[i] += noise
+            self.x[i] = np.maximum(self.x[i], 0)  # Ensure non-negative
+            # Renormalize to ensure it's still a valid probability distribution
+            self.x[i] /= np.sum(self.x[i])
+
+        # For visualization tracking
+        self.strategy_history = [] # Will store most likely rank for each voter
+    
+    def _build_strategy_kwargs(self, strategy_name, alpha, eta, beta, use_expected_score):
+        """
+        Build keyword arguments for strategy instantiation.
+        
+        This method maps common IterativeVotingSystem parameters (alpha, eta, beta)
+        to strategy-specific parameter names. Strategies can accept either:
+        - New names: anchor_strength, learning_rate, sharpness
+        - Old names: alpha, eta, beta (for backward compatibility)
+        
+        Args:
+            strategy_name: Name of the strategy
+            alpha: Anchoring parameter
+            eta: Learning rate parameter
+            beta: Sharpness parameter
+            use_expected_score: Whether to use expected scores
+        
+        Returns:
+            dict: Keyword arguments to pass to strategy constructor
+        """
+        import inspect
+        from strategies import get_strategy
+        
+        # Get the strategy class to inspect its constructor signature
+        StrategyClass = get_strategy(strategy_name)
+        sig = inspect.signature(StrategyClass.__init__)
+        param_names = set(sig.parameters.keys()) - {'self'}  # Exclude 'self'
+        
+        # Build kwargs dict - only include parameters the strategy accepts
+        kwargs = {}
+        
+        # Map common parameters to strategy parameter names
+        # Try new names first, then fall back to old names for backward compatibility
+        if 'anchor_strength' in param_names:
+            kwargs['anchor_strength'] = alpha
+        elif 'alpha' in param_names:
+            kwargs['alpha'] = alpha
+        
+        if 'learning_rate' in param_names:
+            kwargs['learning_rate'] = eta
+        elif 'eta' in param_names:
+            kwargs['eta'] = eta
+        
+        if 'sharpness' in param_names:
+            kwargs['sharpness'] = beta
+        elif 'beta' in param_names:
+            kwargs['beta'] = beta
+        
+        if 'use_expected_score' in param_names:
+            kwargs['use_expected_score'] = use_expected_score
+        
+        return kwargs
         
         # Complete graph or a "clique" (all voters are connected to all others)
         # This is kept for backward compatibility, but degrees are computed from graph
@@ -101,9 +226,23 @@ class IterativeVotingSystem:
         return M
 
     def step(self):
-        # 1. Aggregate (using expected margins for stability in phase plot)
-        M = self.get_margin_matrix_from_probs()
-        p_t = self.solve_gt_game(M)
+        # 1. Aggregate (Play step - Algorithm 1 line 3)
+        # Delegate to GTStrategy to handle sampling/aggregation logic
+        if self.use_expected_score:
+            # Expected-score variant: use expected margin matrix (deterministic)
+            M = self.get_margin_matrix_from_probs()
+            p_t = self.solve_gt_game(M)
+        else:
+            # Sampled variant: delegate to GTStrategy._sample_rankings_from_distribution
+            # This ensures Algorithm 1 line 3 logic is defined in GTStrategy, not here
+            sampled_rankings = self.strategy._sample_rankings_from_distribution(
+                self.x, self.perms, self.rng
+            )
+            # Aggregate using the specified mechanism (default: GT)
+            # The mechanism defines how rankings are aggregated into outcomes
+            from core.aggregator_core import aggregate_rankings
+            p_t = np.array(aggregate_rankings(sampled_rankings, mechanism=self.mechanism))
+        
         p_tilde = p_t - (1.0 / self.m)
         
         # 2. Update Strategies
@@ -147,7 +286,8 @@ class IterativeVotingSystem:
         return p_t
 
 
-def run_full_scenario_for_alpha(alpha, n=15, m=3, eta=0.2, beta=3.0, T=300, seed=0, rng=None, baselines=None):
+def run_full_scenario_for_alpha(alpha, n=15, m=3, eta=0.2, beta=3.0, T=300, seed=0, rng=None, baselines=None, 
+                                 use_expected_score=False, strategy="gt_strategy", mechanism="GT"):
     """
     Run a single simulation for a given alpha and return both:
       - strategies: dominant strategy index per voter over time, shape [n, T]
@@ -155,9 +295,16 @@ def run_full_scenario_for_alpha(alpha, n=15, m=3, eta=0.2, beta=3.0, T=300, seed
       - traj: full trajectory of outcome distributions p^t, shape [T, m]
     This helper is used to ensure that the heatmap and ternary plots
     can be driven from the exact same run.
+    
+    Args:
+        use_expected_score: If False (default), sample rankings from probability distributions
+                           (Algorithm 1 line 3). If True, use expected margin matrix (deterministic).
+        strategy: Strategy name (default: "gt_strategy") or strategy instance.
+        mechanism: Aggregation mechanism name (default: "GT").
     """
     rng = spawn_rng(seed, rng)
-    sys = IterativeVotingSystem(m=m, n=n, alpha=alpha, eta=eta, beta=beta, rng=rng, baselines=baselines)
+    sys = IterativeVotingSystem(m=m, n=n, alpha=alpha, eta=eta, beta=beta, rng=rng, baselines=baselines, 
+                                use_expected_score=use_expected_score, strategy=strategy, mechanism=mechanism)
     traj = []
     
     for _ in range(T):

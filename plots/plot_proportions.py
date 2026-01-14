@@ -138,15 +138,26 @@ class ProportionsPlot(BasePlot):
                 # Mark as precomputed to avoid falling through to the non-precomputed path
                 use_precomputed = True
             elif not use_time_average and p_history is not None:
-                # NOTE: p_history contains probabilities from SAMPLED rankings during evolution,
-                # but the console prints probabilities from MOST LIKELY rankings (argmax).
-                # To match the console output, we should compute from strategies (most likely rankings)
-                # instead of using p_history. So we fall through to compute from strategies.
-                # NOTE: p_history contains probabilities from SAMPLED rankings during evolution,
-                # but the console prints probabilities from MOST LIKELY rankings (argmax).
-                # To match the console output, we should compute from strategies (most likely rankings)
-                # instead of using p_history. So we fall through to compute from strategies.
-                use_precomputed = False  # Force computation from strategies to match console output
+                # Use p_history directly when provided to ensure consistency with phase transition plot
+                # p_history contains probabilities from GT mechanism (via sys.step()), which matches
+                # the mechanism used in phase transition calculations
+                # p_history has shape [T, m] for t=0..T-1 (or t=1..T depending on source)
+                # We need to match the number of time steps in strategies
+                if p_history.shape[0] == n_timesteps:
+                    # Direct match: use p_history as-is
+                    probabilities_over_time = p_history.tolist()
+                    time_steps = list(range(n_timesteps))
+                    use_precomputed = True
+                elif p_history.shape[0] == n_timesteps - 1:
+                    # p_history might be missing t=0, compute it from strategies and prepend
+                    rankings_at_t0 = [all_rankings[strategies[i, 0]] for i in range(n_voters)]
+                    probs_t0 = aggregate_rankings(rankings_at_t0, mechanism=mechanism)
+                    probabilities_over_time = [probs_t0] + p_history.tolist()
+                    time_steps = list(range(n_timesteps))
+                    use_precomputed = True
+                else:
+                    # Shape mismatch: fall back to computing from strategies
+                    use_precomputed = False
             
             if not use_precomputed:
                 # For each time step, extract rankings and aggregate
@@ -216,8 +227,22 @@ class ProportionsPlot(BasePlot):
         # Shape: [n_timesteps, candidates]
         prob_array = np.array(probabilities_over_time)
         
-        # Create colors for candidates (using rainbow colormap)
-        colors = self.create_candidate_colormap(m)
+        # Create colors for candidates using tab10 colormap
+        # Map: A -> tab10 orange (index 1), B -> tab10 brown (index 5), C -> tab10 pink (index 6)
+        tab10_cmap = plt.cm.get_cmap('tab10')
+        colors = []
+        for i, label in enumerate(legend_labels):
+            # Map candidate label to tab10 color index
+            if label == 'A':
+                color_idx = 5  # tab10 brown
+            elif label == 'B':
+                color_idx = 1  # tab10 orange
+            elif label == 'C':
+                color_idx = 6  # tab10 pink
+            else:
+                # For additional candidates, use default colormap
+                color_idx = i % 10
+            colors.append(tab10_cmap(color_idx))
         
         # Use stacked bar chart for both single election and strategic reports
         if is_strategic_reports:
@@ -229,14 +254,14 @@ class ProportionsPlot(BasePlot):
                     # Only add label for first time step to avoid duplicate legend entries
                     label = legend_labels[i] if t_idx == 0 else None
                     bar_height = probs[i]
-                    ax.bar(t, bar_height, bottom=bottom, label=label, color=colors[i], alpha=0.7, edgecolor='white', linewidth=0.5)
+                    ax.bar(t, bar_height, bottom=bottom, label=label, color=colors[i], alpha=0.7, edgecolor='none', linewidth=0, width=1.0)
                     bottom += bar_height
         else:
             # Create stacked bar chart for single election
             probs = prob_array[0]  # Single row of probabilities
             bottom = 0
             for i in range(m):
-                ax.bar(0, probs[i], bottom=bottom, label=legend_labels[i], color=colors[i], alpha=0.7, edgecolor='white', linewidth=0.5)
+                ax.bar(0, probs[i], bottom=bottom, label=legend_labels[i], color=colors[i], alpha=0.7, edgecolor='none', linewidth=0)
                 bottom += probs[i]
         
         # Configure axes
@@ -269,7 +294,7 @@ class ProportionsPlot(BasePlot):
             
             ax.set_xticks(x_ticks)
             # Set x-axis limits with padding to show full bars
-            # Bars are centered on time steps, default width is 0.8, so they extend ±0.4
+            # Bars have width=1.0 and are centered on time steps, so they extend ±0.5
             # Add padding of 0.5 on each side to show full bars
             x_min = x_axis[0] - 0.5
             x_max = x_axis[-1] + 0.5
@@ -280,8 +305,8 @@ class ProportionsPlot(BasePlot):
             # For single election, set tight limits around the single point
             ax.set_xlim(-0.05, 0.05)
         
-        # Add grid
-        ax.grid(True, alpha=0.3, linestyle='--')
+        # Grid disabled
+        ax.grid(False)
         
         # Add legend outside the plot area
         ax.legend(bbox_to_anchor=(1.0, 1.0), loc='upper left', framealpha=0.9, fontsize=self.PLOT_LEGEND_FONTSIZE)

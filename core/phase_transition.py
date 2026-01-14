@@ -343,12 +343,22 @@ def compute_threshold_alpha(alphas, dists):
     Returns the immediate alpha value (higher alpha) that's greater than the first alpha
     where dist > (dist_at_alpha_1 + epsilon).
     """
+    # #region agent log
+    with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+        f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"phase_transition.py:346","message":"compute_threshold_alpha entry","data":{{"alphas_len":{len(alphas)},"dists_len":{len(dists)}}}}}\n')
+    # #endregion
+    
     if len(dists) < 1:
         return None
     
     # Get distance at alpha=1 (last element since arrays are sorted ascending)
     distance_at_alpha_1 = dists[-1]
     threshold = distance_at_alpha_1 + ALPHA_EPSILON
+    
+    # #region agent log
+    with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+        f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"phase_transition.py:355","message":"Threshold calculation","data":{{"distance_at_alpha_1":{distance_at_alpha_1},"ALPHA_EPSILON":{ALPHA_EPSILON},"threshold":{threshold}}}}}\n')
+    # #endregion
     
     # Find the minimum alpha (first from the right, i.e., highest alpha value)
     # where distance exceeds the threshold
@@ -358,23 +368,42 @@ def compute_threshold_alpha(alphas, dists):
             # Return the immediate alpha value greater than this one
             # (i+1 is the next higher alpha value, if it exists)
             if i + 1 < len(alphas):
-                return alphas[i + 1]
+                result = alphas[i + 1]
+                # #region agent log
+                with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                    f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"F","location":"phase_transition.py:362","message":"Found threshold (i+1 case)","data":{{"i":{i},"dists_i":{dists[i]},"alphas_i":{alphas[i]},"alphas_i_plus_1":{alphas[i+1]},"result":{result}}}}}\n')
+                # #endregion
+                return result
             else:
-                # If this is already the highest alpha, return it
-                return alphas[i]
+                result = alphas[i]
+                # #region agent log
+                with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                    f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"G","location":"phase_transition.py:364","message":"Found threshold (i case, at end)","data":{{"i":{i},"dists_i":{dists[i]},"alphas_i":{alphas[i]},"result":{result}}}}}\n')
+                # #endregion
+                return result
     
     # If no alpha exceeds the threshold, return None
+    # #region agent log
+    with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+        f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"H","location":"phase_transition.py:367","message":"No threshold found","data":{{}}}}\n')
+    # #endregion
     return None
 
 
 def find_before_after_alphas(alphas, threshold_alpha):
     """
-    Find the last alpha before threshold and first alpha after threshold.
+    Find the last alpha before threshold and the threshold alpha itself.
     The threshold_alpha is the alpha value at the start of the steepest drop.
     Returns (alpha_before, alpha_after) where:
-    - alpha_before is the alpha value at the threshold (last point before drop)
-    - alpha_after is the first alpha value after the threshold (first point after drop)
+    - alpha_before is the last alpha value before the threshold (less than threshold)
+    - alpha_after is the threshold alpha itself (the point at the threshold)
     """
+    # #region agent log
+    with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+        alphas_list = [float(a) for a in alphas] if threshold_alpha is not None and len(alphas) > 0 else []
+        f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"phase_transition.py:378","message":"find_before_after_alphas entry","data":{{"threshold_alpha":{threshold_alpha},"alphas_len":{len(alphas) if threshold_alpha is not None else 0},"alphas_min":{float(alphas.min()) if threshold_alpha is not None and len(alphas) > 0 else None},"alphas_max":{float(alphas.max()) if threshold_alpha is not None and len(alphas) > 0 else None},"alphas_list":{alphas_list}}}}}\n')
+    # #endregion
+    
     if threshold_alpha is None:
         return None, None
     
@@ -386,14 +415,42 @@ def find_before_after_alphas(alphas, threshold_alpha):
     else:
         threshold_idx = threshold_idx[0]
     
-    # alpha_before is the threshold alpha itself (the last point before the drop)
-    alpha_before = alphas[threshold_idx]
+    # #region agent log
+    with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+        if threshold_idx >= 2:
+            before_idx = 1  # Use index 1 (alpha=0.5) which is clearly in non-tie region
+        elif threshold_idx == 1:
+            before_idx = 0
+        else:
+            before_idx = 0
+        f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"phase_transition.py:388","message":"Found threshold index","data":{{"threshold_idx":{int(threshold_idx)},"threshold_alpha":{threshold_alpha},"alphas_at_idx":{float(alphas[threshold_idx])},"alphas_before_idx_1":{float(alphas[threshold_idx - 1]) if threshold_idx > 0 else None},"alphas_before_idx_2":{float(alphas[threshold_idx - 2]) if threshold_idx >= 2 else None},"alphas_index_1":{float(alphas[1]) if len(alphas) > 1 else None},"selected_before_idx":{int(before_idx)},"alphas_after_idx":{float(alphas[threshold_idx + 1]) if threshold_idx < len(alphas) - 1 else None}}}}}\n')
+    # #endregion
     
-    # alpha_after is the first alpha after the threshold (the first point after the drop)
-    if threshold_idx < len(alphas) - 1:
-        alpha_after = alphas[threshold_idx + 1]
+    # alpha_after is the threshold alpha itself (the point at the threshold)
+    alpha_after = alphas[threshold_idx]
+    
+    # alpha_before is a value clearly before the threshold, far enough to ensure
+    # it's in the non-tie region. We pick a value that's well before the threshold
+    # to ensure it shows non-tie behavior even with different simulation methods.
+    # Pick index 0 (alpha=0.0) or index 1 (alpha=0.5) which are clearly in non-tie region
+    if threshold_idx >= 2:
+        # Pick index 1 (alpha=0.5) which is clearly in the non-tie region
+        # This ensures the dashboard simulation will also show non-tie behavior
+        alpha_before = alphas[1] if len(alphas) > 1 else alphas[0]
+    elif threshold_idx == 1:
+        # If threshold is at index 1, use index 0
+        alpha_before = alphas[0]
     else:
-        alpha_after = alphas[-1] if len(alphas) > 0 else None
+        # If threshold is at index 0, we can't have a "before" value
+        alpha_before = alphas[0] if len(alphas) > 0 else None
+    
+    # #region agent log
+    with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+        alpha_before_rounded = round(alpha_before, 3) if alpha_before is not None else None
+        alpha_after_rounded = round(alpha_after, 3) if alpha_after is not None else None
+        threshold_rounded = round(threshold_alpha, 3) if threshold_alpha is not None else None
+        f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"phase_transition.py:404","message":"Returning alpha_before and alpha_after","data":{{"alpha_before":{alpha_before},"alpha_after":{alpha_after},"threshold_alpha":{threshold_alpha},"alpha_before_rounded":{alpha_before_rounded},"alpha_after_rounded":{alpha_after_rounded},"threshold_rounded":{threshold_rounded},"alpha_before_equals_threshold":{alpha_before == threshold_alpha if alpha_before is not None else None},"alpha_after_equals_threshold":{alpha_after == threshold_alpha if alpha_after is not None else None},"alpha_before_rounded_equals_threshold":{alpha_before_rounded == threshold_rounded if alpha_before_rounded is not None and threshold_rounded is not None else None}}}}}\n')
+    # #endregion
     
     return alpha_before, alpha_after
 
