@@ -2,6 +2,7 @@ import argparse
 from core.honest_reports import generate_honest_reports, parse_baselines, format_rankings_readable
 from core.rankings_core import generate_rankings, candidate_labels
 from plots.plot_voter_strategies import plot_voter_strategies
+from plots.BasePlot import BasePlot
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -169,15 +170,10 @@ Examples:
         # Save as PDF if requested
         if args.save:
             filename = generate_pdf_filename(args, n)
+            plotter = BasePlot()
             fig = ax.figure
-            fig.savefig(
-                filename,
-                format='pdf',
-                dpi=300,
-                bbox_inches='tight',
-                pad_inches=0.1
-            )
-            print(f"Plot saved to: {filename}")
+            filepath = plotter.save_figure(fig, filename)
+            print(f"Plot saved to: {filepath}")
         
         # Show plot if requested
         if args.plot:

@@ -1,6 +1,7 @@
 import argparse
 from core.rankings_core import generate_rankings
 from plots.plot_rankings import plot_rankings_list
+from plots.BasePlot import BasePlot
 import matplotlib.pyplot as plt
 
 
@@ -105,15 +106,10 @@ Examples:
         # Save as PDF if requested
         if args.save:
             filename = generate_pdf_filename(args)
+            plotter = BasePlot()
             fig = ax.figure
-            fig.savefig(
-                filename,
-                format='pdf',
-                dpi=300,
-                bbox_inches='tight',
-                pad_inches=0.1
-            )
-            print(f"Plot saved to: {filename}")
+            filepath = plotter.save_figure(fig, filename)
+            print(f"Plot saved to: {filepath}")
         
         # Show plot if requested
         if args.plot:

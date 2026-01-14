@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from core.honest_reports import parse_baselines
 from core.dashboard_core import run_dashboard_simulation
 from plots.plot_dashboard import plot_dashboard
+from plots.BasePlot import BasePlot
 
 
 def generate_pdf_filename(args):
@@ -177,14 +178,9 @@ Examples:
         # Save as PDF if requested
         if args.save:
             filename = generate_pdf_filename(args)
-            fig.savefig(
-                filename,
-                format='pdf',
-                dpi=300,
-                bbox_inches='tight',
-                pad_inches=0.1
-            )
-            print(f"Plot saved to: {filename}")
+            plotter = BasePlot()
+            filepath = plotter.save_figure(fig, filename)
+            print(f"Plot saved to: {filepath}")
         
         # Show plot if requested
         if args.plot:

@@ -6,7 +6,6 @@ from core.phase_transition import (
     run_phase_transition,
     compute_threshold_alpha,
     find_before_after_alphas,
-    run_phase_transition_ternary,
 )
 from core.voting_system import run_full_scenario_for_alpha
 
@@ -35,7 +34,6 @@ def run_dashboard_simulation(n=15, m=3, seed=0, baselines=None, eta=0.2, beta=3.
         - ternary: Dictionary with traj_before and traj_after (if m=3)
     """
     rng_phase = np.random.default_rng(seed)
-    rng_heat = np.random.default_rng(seed + 1)
 
     alphas, dists_mean, _ = run_phase_transition(n=n, m=m, seed=seed, rng=rng_phase, baselines=baselines)
     threshold_alpha = compute_threshold_alpha(alphas, dists_mean)
@@ -45,33 +43,34 @@ def run_dashboard_simulation(n=15, m=3, seed=0, baselines=None, eta=0.2, beta=3.
         alpha_after = 0.60
         
     ternary = {"traj_before": None, "traj_after": None}
-
-    # Use a very small alpha (near zero) for the heatmap to visualize rank changes
-    # when there's minimal anchoring force
-    alpha_heatmap = 0.001  # Very close to zero to minimize anchoring
+    strategies = None
+    perms = None
+    traj_heatmap = None
     
     if m == 3:
-        # Run heatmap with near-zero alpha to see if ranks change
-        strategies, perms, traj_heatmap = run_full_scenario_for_alpha(
-            alpha_heatmap, n=n, m=m, eta=eta, beta=beta, T=T, seed=seed, rng=rng_heat, baselines=baselines
-        )
-        
-        # Ternary plots still use before/after threshold alphas
+        # Run before/after threshold simulations using run_full_scenario_for_alpha
+        # to get both trajectories (for ternary plots) and strategies (for heatmap)
         if alpha_before is not None:
-            traj_before = run_phase_transition_ternary(
+            strategies_before, perms_before, traj_before = run_full_scenario_for_alpha(
                 alpha_before, T=T, n=n, m=m, eta=eta, beta=beta, seed=seed, rng=None, baselines=baselines
             )
             ternary["traj_before"] = traj_before
+            # Reuse strategies and perms from before run for heatmap
+            strategies = strategies_before
+            perms = perms_before
+            traj_heatmap = traj_before
+        
         if alpha_after is not None:
-            traj_after = run_phase_transition_ternary(
+            _, _, traj_after = run_full_scenario_for_alpha(
                 alpha_after, T=T, n=n, m=m, eta=eta, beta=beta, seed=seed, rng=None, baselines=baselines
             )
             ternary["traj_after"] = traj_after
     else:
-        # Fallback: keep previous behavior for non-ternary cases
-        strategies, perms, traj_heatmap = run_full_scenario_for_alpha(
-            alpha_heatmap, n=n, m=m, eta=eta, beta=beta, T=T, seed=seed, rng=rng_heat, baselines=baselines
-        )
+        # Fallback: for non-ternary cases, use alpha_before if available
+        if alpha_before is not None:
+            strategies, perms, traj_heatmap = run_full_scenario_for_alpha(
+                alpha_before, n=n, m=m, eta=eta, beta=beta, T=T, seed=seed, rng=None, baselines=baselines
+            )
         ternary = {"traj_before": None, "traj_after": None}
     
     results = {
@@ -84,7 +83,7 @@ def run_dashboard_simulation(n=15, m=3, seed=0, baselines=None, eta=0.2, beta=3.
             "strategies": strategies,
             "perms": perms,
             "traj": traj_heatmap,
-            "alpha": alpha_heatmap,
+            "alpha": alpha_before,
         },
         "ternary": ternary,
     }

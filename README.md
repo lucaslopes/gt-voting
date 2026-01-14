@@ -733,7 +733,7 @@ gt-voting/
     ├── plot_voter_strategies.py  # Strategy visualization
     ├── plot_proportions.py  # Proportion plots (stacked area charts)
     ├── plot_ternary.py    # Ternary trajectory plots
-    └── plot_utils.py      # Shared plotting utilities
+    └── BasePlot.py        # Base class for all plots with shared utilities
 ```
 
 ### Mechanism Architecture

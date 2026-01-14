@@ -8,6 +8,7 @@ from core.rankings_core import generate_rankings, candidate_labels
 from core.strategic_reports import generate_strategic_reports
 from core.aggregator_core import aggregate_rankings
 from plots.plot_proportions import plot_proportions
+from plots.BasePlot import BasePlot
 from mechanisms import list_mechanisms
 
 
@@ -399,14 +400,9 @@ Examples:
                 # Save as PDF if requested
                 if args.save:
                     filename = generate_pdf_filename(args)
-                    fig.savefig(
-                        filename,
-                        format='pdf',
-                        dpi=300,
-                        bbox_inches='tight',
-                        pad_inches=0.1
-                    )
-                    print(f"Plot saved to: {filename}")
+                    plotter = BasePlot()
+                    filepath = plotter.save_figure(fig, filename)
+                    print(f"Plot saved to: {filepath}")
                 
                 # Show plot if requested
                 if args.plot:
@@ -430,15 +426,10 @@ Examples:
                 # Save as PDF if requested
                 if args.save:
                     filename = generate_pdf_filename(args)
+                    plotter = BasePlot()
                     fig = ax.figure
-                    fig.savefig(
-                        filename,
-                        format='pdf',
-                        dpi=300,
-                        bbox_inches='tight',
-                        pad_inches=0.1
-                    )
-                    print(f"Plot saved to: {filename}")
+                    filepath = plotter.save_figure(fig, filename)
+                    print(f"Plot saved to: {filepath}")
                 
                 # Show plot if requested
                 if args.plot:
@@ -508,15 +499,10 @@ Examples:
             # Save as PDF if requested
             if args.save:
                 filename = generate_pdf_filename(args)
+                plotter = BasePlot()
                 fig = ax.figure
-                fig.savefig(
-                    filename,
-                    format='pdf',
-                    dpi=300,
-                    bbox_inches='tight',
-                    pad_inches=0.1
-                )
-                print(f"Plot saved to: {filename}")
+                filepath = plotter.save_figure(fig, filename)
+                print(f"Plot saved to: {filepath}")
             
             # Show plot if requested
             if args.plot:
