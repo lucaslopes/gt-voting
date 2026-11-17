@@ -1,7 +1,9 @@
 [project]
 name = "gt-voting"
 version = "0.1.0"
-description = "Add your description here"
+description = "Python toolkit for iterative preferential voting and GTIV research"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -11,3 +13,18 @@ dependencies = [
     "numpy>=2.0.0,<2.4",
     "scipy>=1.16.3",
 ]
+
+[project.scripts]
+gtiv = "main:main"
+gt-voting = "main:main"
+
+[build-system]
+requires = ["setuptools>=77.0.3", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["main"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cli*", "core*", "mechanisms*", "plots*", "strategies*"]

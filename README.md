@@ -7,18 +7,30 @@ A Python toolkit for generating and analyzing candidate rankings in voting syste
 This project uses `uv` for dependency management. Install dependencies with:
 
 ```bash
-uv pip install -e '.[dev]'
+python -m pip install -e .
+# or
+uv pip install -e .
 ```
+
+The installed `gtiv` command launches the same Python CLI as `python main.py`.
+The distribution name remains `gt-voting` in this release line.
+
+This project is licensed under the GNU General Public License v3 or later; see `LICENSE`.
 
 ## CLI Usage
 
-The project provides a unified CLI interface through `cli.py` with five main subcommands: `rankings`, `honest-reports`, `strategic-reports`, `proportions`, and `ternary`.
+The unified CLI is implemented in `main.py` and provides the `rankings`,
+`honest-reports`, `strategic-reports`, `proportions`, `ternary`,
+`phase-transition`, and `dashboard` subcommands.
 
 ### Basic Usage
 
 ```bash
-# Using the unified CLI entry point
-uv run python cli.py <command> [options]
+# Using the installed unified CLI entry point
+gtiv <command> [options]
+
+# Running from a source checkout
+python main.py <command> [options]
 
 # Or using the individual CLI modules directly
 uv run python -m cli.rankings_cli [options]
@@ -50,20 +62,20 @@ Generate and display all possible candidate rankings for a given number of candi
 
 ```bash
 # Generate all rankings for 3 candidates (integer format, default)
-uv run python cli.py rankings --m 3
+gtiv rankings --m 3
 
 # Generate rankings in alphabetical format (A, B, C, ...)
-uv run python cli.py rankings --m 3 --alphabetical
+gtiv rankings --m 3 --alphabetical
 
 # Using --candidates as an alternative to --m
-uv run python cli.py rankings --candidates 4
+gtiv rankings --candidates 4
 
 # Display rankings with a visual plot
-uv run python cli.py rankings --m 3 --plot
+gtiv rankings --m 3 --plot
 
 # Specify plot layout (horizontal, vertical, matrix, or auto)
-uv run python cli.py rankings --m 3 --plot --layout horizontal
-uv run python cli.py rankings --m 4 --plot --layout matrix
+gtiv rankings --m 3 --plot --layout horizontal
+gtiv rankings --m 4 --plot --layout matrix
 ```
 
 #### Options
@@ -82,25 +94,25 @@ Generate honest reports (voter rankings) from baselines or random seed.
 
 ```bash
 # Generate honest reports using random seed (default: n=15, m=3, seed=0)
-uv run python cli.py honest-reports --n 15 --m 3 --seed 42
+gtiv honest-reports --n 15 --m 3 --seed 42
 
 # Generate with custom number of voters and candidates
-uv run python cli.py honest-reports --n 20 --m 4 --seed 123
+gtiv honest-reports --n 20 --m 4 --seed 123
 
 # Using baseline string (old syntax: comma-separated indices)
-uv run python cli.py honest-reports --n 6 --m 3 --baselines "0,1,2,0,1,2"
+gtiv honest-reports --n 6 --m 3 --baselines "0,1,2,0,1,2"
 
 # Using baseline string (new syntax: repetition, n inferred automatically)
-uv run python cli.py honest-reports --m 3 --baselines "0*5,3*5,4*5"
+gtiv honest-reports --m 3 --baselines "0*5,3*5,4*5"
 
 # Output in alphabetical format
-uv run python cli.py honest-reports --m 3 --baselines "0*5,3*5,4*5" --alphabetical
+gtiv honest-reports --m 3 --baselines "0*5,3*5,4*5" --alphabetical
 
 # Display results with a visual heatmap
-uv run python cli.py honest-reports --m 3 --baselines "0*5,3*5,4*5" --plot
+gtiv honest-reports --m 3 --baselines "0*5,3*5,4*5" --plot
 
 # Save plot as PDF (can be used with or without --plot)
-uv run python cli.py honest-reports --m 3 --baselines "0*5,3*5,4*5" --save
+gtiv honest-reports --m 3 --baselines "0*5,3*5,4*5" --save
 ```
 
 #### Baseline Syntax
@@ -132,46 +144,46 @@ Generate strategic reports that evolve over T iterations, simulating how voters'
 
 ```bash
 # Basic usage with GTStrategy (default) - T=5 iterations
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5
+gtiv strategic-reports --m 3 --n 6 --T 5
 
 # GTStrategy with custom parameters
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --anchor-strength 0.2 --learning-rate 0.3 --sharpness 5.0
+gtiv strategic-reports --m 3 --n 6 --T 5 --anchor-strength 0.2 --learning-rate 0.3 --sharpness 5.0
 
 # Using SimilarityStrategy (backward compatibility)
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --strategy similarity_strategy --anchor-strength 0.5
+gtiv strategic-reports --m 3 --n 6 --T 5 --strategy similarity_strategy --anchor-strength 0.5
 
 # Using baseline string with GTStrategy
-uv run python cli.py strategic-reports --m 3 --baselines "0*5,3*5,4*5" --T 10
+gtiv strategic-reports --m 3 --baselines "0*5,3*5,4*5" --T 10
 
 # Output in alphabetical format
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --alphabetical
+gtiv strategic-reports --m 3 --n 6 --T 5 --alphabetical
 
 # Display trajectory visualization over T iterations
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --plot
+gtiv strategic-reports --m 3 --n 6 --T 5 --plot
 
 # Save plot as PDF (can be used with or without --plot)
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --save
+gtiv strategic-reports --m 3 --n 6 --T 5 --save
 
 # GTStrategy with high anchor strength (strong anchoring to baseline)
-uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --anchor-strength 0.9 --plot
+gtiv strategic-reports --m 3 --n 6 --T 10 --anchor-strength 0.9 --plot
 
 # GTStrategy with low anchor strength (more strategic adaptation)
-uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --anchor-strength 0.1 --plot
+gtiv strategic-reports --m 3 --n 6 --T 10 --anchor-strength 0.1 --plot
 
 # GTStrategy with expected-score variant (deterministic dynamics)
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --use-expected-score --plot
+gtiv strategic-reports --m 3 --n 6 --T 5 --use-expected-score --plot
 
 # Display Layer 1 payoff analysis for all time steps
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --show-payoffs
+gtiv strategic-reports --m 3 --n 6 --T 5 --show-payoffs
 
 # Display payoffs only for the last time step
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --show-payoffs --payoff-time last
+gtiv strategic-reports --m 3 --n 6 --T 5 --show-payoffs --payoff-time last
 
 # Display payoffs for specific time steps (1-indexed: t=1, t=2, t=5)
-uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --show-payoffs --payoff-time "1,2,5"
+gtiv strategic-reports --m 3 --n 6 --T 10 --show-payoffs --payoff-time "1,2,5"
 
 # With custom graph topology and payoff analysis
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --graph "0-1,1-2,2-3,3-4,4-5" --show-payoffs
+gtiv strategic-reports --m 3 --n 6 --T 5 --graph "0-1,1-2,2-3,3-4,4-5" --show-payoffs
 ```
 
 #### Strategies
@@ -265,43 +277,43 @@ Visualize probability distributions as proportion plots (stacked area charts). T
 
 ```bash
 # Single election - visualize probability distribution for one set of rankings
-uv run python cli.py proportions --m 3 --n 6 --seed 42
+gtiv proportions --m 3 --n 6 --seed 42
 
 # Strategic reports over T iterations with GTStrategy (default) - see how probabilities evolve over time
-uv run python cli.py proportions --m 3 --n 6 --T 5
+gtiv proportions --m 3 --n 6 --T 5
 
 # GTStrategy with custom parameters
-uv run python cli.py proportions --m 3 --n 6 --T 5 --anchor-strength 0.2 --learning-rate 0.3 --sharpness 5.0
+gtiv proportions --m 3 --n 6 --T 5 --anchor-strength 0.2 --learning-rate 0.3 --sharpness 5.0
 
 # GTStrategy with expected-score variant (deterministic dynamics)
-uv run python cli.py proportions --m 3 --n 6 --T 10 --use-expected-score --plot
+gtiv proportions --m 3 --n 6 --T 10 --use-expected-score --plot
 
 # Using SimilarityStrategy
-uv run python cli.py proportions --m 3 --n 6 --T 5 --strategy similarity_strategy --anchor-strength 0.5
+gtiv proportions --m 3 --n 6 --T 5 --strategy similarity_strategy --anchor-strength 0.5
 
 # With baselines - use specific baseline rankings
-uv run python cli.py proportions --m 3 --baselines "0*5,3*5,4*5" --T 10
+gtiv proportions --m 3 --baselines "0*5,3*5,4*5" --T 10
 
 # Custom aggregation mechanism (pairwise majority)
-uv run python cli.py proportions --m 3 --n 6 --T 5 --mechanism pairwise_majority
+gtiv proportions --m 3 --n 6 --T 5 --mechanism pairwise_majority
 
 # Using plurality mechanism
-uv run python cli.py proportions --m 3 --n 6 --T 5 --mechanism plurality
+gtiv proportions --m 3 --n 6 --T 5 --mechanism plurality
 
 # Custom title for the plot
-uv run python cli.py proportions --m 3 --n 6 --T 5 --title "Election Evolution"
+gtiv proportions --m 3 --n 6 --T 5 --title "Election Evolution"
 
 # Show integer labels instead of alphabetical
-uv run python cli.py proportions --m 3 --n 6 --seed 42 --show-integers
+gtiv proportions --m 3 --n 6 --seed 42 --show-integers
 
 # Save plot as PDF (can be used with or without --plot)
-uv run python cli.py proportions --m 3 --baselines "0*2,3*2,4*2" --T 9 --plot --learning-rate 0.4 --sharpness 0.3 --anchor-strength 0.2 --save
+gtiv proportions --m 3 --baselines "0*2,3*2,4*2" --T 9 --plot --learning-rate 0.4 --sharpness 0.3 --anchor-strength 0.2 --save
 
 # Plot time-averaged outcomes (follows learning-in-games convention)
-uv run python cli.py proportions --m 3 --n 6 --T 10 --time-average --plot
+gtiv proportions --m 3 --n 6 --T 10 --time-average --plot
 
 # Show both instantaneous and time-averaged outcomes side-by-side
-uv run python cli.py proportions --m 3 --n 6 --T 10 --show-both --plot
+gtiv proportions --m 3 --n 6 --T 10 --show-both --plot
 ```
 
 #### Modes
@@ -369,19 +381,19 @@ Visualize ternary trajectory plots comparing voting dynamics before and after th
 
 ```bash
 # Basic ternary plot (default: n=15, m=3, T=300)
-uv run python cli.py ternary --plot
+gtiv ternary --plot
 
 # With custom parameters
-uv run python cli.py ternary --n 15 --m 3 --T 300 --learning-rate 0.2 --sharpness 3.0 --seed 42 --plot
+gtiv ternary --n 15 --m 3 --T 300 --learning-rate 0.2 --sharpness 3.0 --seed 42 --plot
 
 # With baselines
-uv run python cli.py ternary --m 3 --baselines "0*5,3*5,4*5" --T 300 --plot
+gtiv ternary --m 3 --baselines "0*5,3*5,4*5" --T 300 --plot
 
 # Save as PDF
-uv run python cli.py ternary --n 15 --m 3 --T 300 --save
+gtiv ternary --n 15 --m 3 --T 300 --save
 
 # Custom title
-uv run python cli.py ternary --n 15 --m 3 --T 300 --title "Phase Transition Analysis" --plot
+gtiv ternary --n 15 --m 3 --T 300 --title "Phase Transition Analysis" --plot
 ```
 
 #### How It Works
@@ -427,16 +439,16 @@ Visualize the phase transition experiment showing how the distance from the cent
 
 ```bash
 # Basic phase transition plot (default: 10 runs per alpha)
-uv run python cli.py phase-transition --m 3 --n 15 --plot
+gtiv phase-transition --m 3 --n 15 --plot
 
 # With custom parameters
-uv run python cli.py phase-transition --m 3 --n 15 --runs 20 --burn-in 300 --collection-steps 100 --plot
+gtiv phase-transition --m 3 --n 15 --runs 20 --burn-in 300 --collection-steps 100 --plot
 
 # With baselines
-uv run python cli.py phase-transition --m 3 --baselines "0*5,3*5,4*5" --runs 15 --plot
+gtiv phase-transition --m 3 --baselines "0*5,3*5,4*5" --runs 15 --plot
 
 # Save as PDF
-uv run python cli.py phase-transition --m 3 --n 15 --save
+gtiv phase-transition --m 3 --n 15 --save
 ```
 
 #### How It Works
@@ -481,7 +493,7 @@ uv run python cli.py phase-transition --m 3 --n 15 --save
 ### Example 1: List All Rankings for 3 Candidates
 
 ```bash
-uv run python cli.py rankings --m 3
+gtiv rankings --m 3
 ```
 
 Output:
@@ -497,7 +509,7 @@ Output:
 ### Example 2: Generate Honest Reports with Specific Baselines
 
 ```bash
-uv run python cli.py honest-reports --m 3 --baselines "0*5,1*5,2*5" --alphabetical
+gtiv honest-reports --m 3 --baselines "0*5,1*5,2*5" --alphabetical
 ```
 
 This creates 15 voters (5 for each of the first 3 permutation indices) and outputs in alphabetical format.
@@ -505,7 +517,7 @@ This creates 15 voters (5 for each of the first 3 permutation indices) and outpu
 ### Example 3: Visualize Rankings
 
 ```bash
-uv run python cli.py rankings --m 3 --plot --layout horizontal
+gtiv rankings --m 3 --plot --layout horizontal
 ```
 
 This displays a colorful heatmap showing all possible rankings for 3 candidates.
@@ -513,7 +525,7 @@ This displays a colorful heatmap showing all possible rankings for 3 candidates.
 ### Example 3b: Save Rankings Plot as PDF
 
 ```bash
-uv run python cli.py rankings --m 3 --save --layout horizontal
+gtiv rankings --m 3 --save --layout horizontal
 ```
 
 This generates and saves the rankings plot as a high-quality PDF file (e.g., `rankings_m3_layout_horizontal.pdf`).
@@ -521,7 +533,7 @@ This generates and saves the rankings plot as a high-quality PDF file (e.g., `ra
 ### Example 4: Generate and Visualize Honest Reports
 
 ```bash
-uv run python cli.py honest-reports --n 10 --m 3 --seed 42 --plot
+gtiv honest-reports --n 10 --m 3 --seed 42 --plot
 ```
 
 This generates 10 random honest reports and displays them as a heatmap.
@@ -529,7 +541,7 @@ This generates 10 random honest reports and displays them as a heatmap.
 ### Example 4b: Save Honest Reports Plot as PDF
 
 ```bash
-uv run python cli.py honest-reports --n 10 --m 3 --seed 42 --save
+gtiv honest-reports --n 10 --m 3 --seed 42 --save
 ```
 
 This generates honest reports and saves the plot as a PDF file (e.g., `honest_reports_m3_n10_seed42.pdf`).
@@ -537,7 +549,7 @@ This generates honest reports and saves the plot as a PDF file (e.g., `honest_re
 ### Example 5: Simulate Strategic Voting Evolution with GTStrategy
 
 ```bash
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --plot
+gtiv strategic-reports --m 3 --n 6 --T 5 --plot
 ```
 
 This simulates how 6 voters' reports evolve over 5 iterations using GTStrategy (default), showing the trajectory in a heatmap where each column represents a time step.
@@ -545,7 +557,7 @@ This simulates how 6 voters' reports evolve over 5 iterations using GTStrategy (
 ### Example 5b: Save Strategic Reports Plot as PDF
 
 ```bash
-uv run python cli.py strategic-reports --m 3 --baselines "0*2,3*2,4*2" --T 9 --plot --learning-rate 0.4 --sharpness 0.3 --anchor-strength 0.2 --save
+gtiv strategic-reports --m 3 --baselines "0*2,3*2,4*2" --T 9 --plot --learning-rate 0.4 --sharpness 0.3 --anchor-strength 0.2 --save
 ```
 
 This generates strategic reports and saves the plot as a PDF file (e.g., `strategic_reports_m3_T9_lr0.4_sh0.3_as0.2_gt_strategy.pdf`).
@@ -553,7 +565,7 @@ This generates strategic reports and saves the plot as a PDF file (e.g., `strate
 ### Example 6: GTStrategy with Custom Parameters
 
 ```bash
-uv run python cli.py strategic-reports --m 3 --baselines "0*5,1*5,2*5" --T 10 --anchor-strength 0.2 --learning-rate 0.3 --sharpness 5.0 --plot
+gtiv strategic-reports --m 3 --baselines "0*5,1*5,2*5" --T 10 --anchor-strength 0.2 --learning-rate 0.3 --sharpness 5.0 --plot
 ```
 
 This shows how reports evolve with GTStrategy using custom parameters: anchor=0.2 (moderate anchoring), learning-rate=0.3 (faster learning), sharpness=5.0 (more exploitation, sharper best responses).
@@ -561,7 +573,7 @@ This shows how reports evolve with GTStrategy using custom parameters: anchor=0.
 ### Example 7: GTStrategy with High Anchor strength (Strong Anchoring)
 
 ```bash
-uv run python cli.py strategic-reports --m 3 --n 10 --T 10 --anchor-strength 0.9 --seed 42 --plot
+gtiv strategic-reports --m 3 --n 10 --T 10 --anchor-strength 0.9 --seed 42 --plot
 ```
 
 This demonstrates GTStrategy with high anchor strength (0.9), meaning voters strongly anchor to their baseline reports while still adapting strategically.
@@ -569,7 +581,7 @@ This demonstrates GTStrategy with high anchor strength (0.9), meaning voters str
 ### Example 8: Using SimilarityStrategy (Backward Compatibility)
 
 ```bash
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --strategy similarity_strategy --anchor-strength 0.5 --plot
+gtiv strategic-reports --m 3 --n 6 --T 5 --strategy similarity_strategy --anchor-strength 0.5 --plot
 ```
 
 This uses SimilarityStrategy with anchor_strength=0.5, demonstrating the similarity-based evolution approach.
@@ -577,7 +589,7 @@ This uses SimilarityStrategy with anchor_strength=0.5, demonstrating the similar
 ### Example 9: SimilarityStrategy with Kendall Tau Distance
 
 ```bash
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --strategy similarity_strategy --anchor-strength 0.5 --distance-metric kendall_tau --plot
+gtiv strategic-reports --m 3 --n 6 --T 5 --strategy similarity_strategy --anchor-strength 0.5 --distance-metric kendall_tau --plot
 ```
 
 This uses SimilarityStrategy with Kendall Tau distance instead of Spearman footrule to measure similarity between rankings, which may produce different evolution patterns.
@@ -585,7 +597,7 @@ This uses SimilarityStrategy with Kendall Tau distance instead of Spearman footr
 ### Example 9: Visualize Single Election Probability Distribution
 
 ```bash
-uv run python cli.py proportions --m 3 --n 6 --seed 42 --plot
+gtiv proportions --m 3 --n 6 --seed 42 --plot
 ```
 
 This generates 6 voters' rankings and displays a proportion plot showing the probability distribution over the 3 candidates using Pairwise Majority Rule (default mechanism for `proportions` command).
@@ -593,7 +605,7 @@ This generates 6 voters' rankings and displays a proportion plot showing the pro
 ### Example 9b: Save Proportions Plot as PDF
 
 ```bash
-uv run python cli.py proportions --m 3 --baselines "0*2,3*2,4*2" --T 9 --plot --learning-rate 0.4 --sharpness 0.3 --anchor-strength 0.2 --save
+gtiv proportions --m 3 --baselines "0*2,3*2,4*2" --T 9 --plot --learning-rate 0.4 --sharpness 0.3 --anchor-strength 0.2 --save
 ```
 
 This generates strategic reports and saves the proportion plot as a PDF file (e.g., `proportions_m3_T9_lr0.4_sh0.3_as0.2_GT.pdf`).
@@ -601,7 +613,7 @@ This generates strategic reports and saves the proportion plot as a PDF file (e.
 ### Example 10: Visualize Probability Evolution Over Time
 
 ```bash
-uv run python cli.py proportions --m 3 --n 6 --T 5 --plot
+gtiv proportions --m 3 --n 6 --T 5 --plot
 ```
 
 This simulates strategic voting over 5 iterations using GTStrategy (default) and shows how candidate probabilities evolve over time in a stacked area chart.
@@ -609,7 +621,7 @@ This simulates strategic voting over 5 iterations using GTStrategy (default) and
 ### Example 11: Probability Evolution with Baselines
 
 ```bash
-uv run python cli.py proportions --m 3 --baselines "0*5,3*5,4*5" --T 10 --anchor-strength 0.2 --learning-rate 0.3 --sharpness 5.0 --plot
+gtiv proportions --m 3 --baselines "0*5,3*5,4*5" --T 10 --anchor-strength 0.2 --learning-rate 0.3 --sharpness 5.0 --plot
 ```
 
 This creates 15 voters with specific baseline rankings and shows how their probabilities evolve over 10 time steps.
@@ -618,13 +630,13 @@ This creates 15 voters with specific baseline rankings and shows how their proba
 
 ```bash
 # GT mechanism (Game Theory)
-uv run python cli.py proportions --m 3 --n 6 --seed 42 --mechanism GT
+gtiv proportions --m 3 --n 6 --seed 42 --mechanism GT
 
 # Pairwise Majority Rule
-uv run python cli.py proportions --m 3 --n 6 --seed 42 --mechanism pairwise_majority
+gtiv proportions --m 3 --n 6 --seed 42 --mechanism pairwise_majority
 
 # Plurality Rule
-uv run python cli.py proportions --m 3 --n 6 --seed 42 --mechanism plurality
+gtiv proportions --m 3 --n 6 --seed 42 --mechanism plurality
 ```
 
 This demonstrates how different aggregation mechanisms can produce different probability distributions from the same set of rankings.
@@ -633,10 +645,10 @@ This demonstrates how different aggregation mechanisms can produce different pro
 
 ```bash
 # Plot time-averaged outcomes instead of instantaneous
-uv run python cli.py proportions --m 3 --n 6 --T 20 --time-average --plot
+gtiv proportions --m 3 --n 6 --T 20 --time-average --plot
 
 # Compare instantaneous vs time-averaged side-by-side
-uv run python cli.py proportions --m 3 --n 6 --T 20 --show-both --plot --save
+gtiv proportions --m 3 --n 6 --T 20 --show-both --plot --save
 ```
 
 Time-averaged outcomes \hat{p}^t = (1/t) * sum_{tau=1}^t p^tau follow the learning-in-games convention where time averages converge even when instantaneous trajectories cycle. This is particularly relevant for zero-sum games where many learning dynamics exhibit convergence of time averages rather than pointwise convergence.
@@ -645,11 +657,11 @@ Time-averaged outcomes \hat{p}^t = (1/t) * sum_{tau=1}^t p^tau follow the learni
 
 ```bash
 # Use expected-score variant for deterministic dynamics
-uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --use-expected-score --plot
+gtiv strategic-reports --m 3 --n 6 --T 10 --use-expected-score --plot
 
 # Compare sampled vs expected-score variants
-uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --seed 42 --plot
-uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --seed 42 --use-expected-score --plot
+gtiv strategic-reports --m 3 --n 6 --T 10 --seed 42 --plot
+gtiv strategic-reports --m 3 --n 6 --T 10 --seed 42 --use-expected-score --plot
 ```
 
 The expected-score variant replaces sampled rankings with expected margin matrices computed from mixed strategies, resulting in deterministic dynamics. Key differences:
@@ -669,13 +681,13 @@ This variant is particularly useful for:
 
 ```bash
 # Basic ternary plot showing before/after threshold dynamics
-uv run python cli.py ternary --n 15 --m 3 --T 300 --plot
+gtiv ternary --n 15 --m 3 --T 300 --plot
 
 # With custom parameters
-uv run python cli.py ternary --n 15 --m 3 --T 300 --learning-rate 0.2 --sharpness 3.0 --seed 42 --plot
+gtiv ternary --n 15 --m 3 --T 300 --learning-rate 0.2 --sharpness 3.0 --seed 42 --plot
 
 # Save as PDF
-uv run python cli.py ternary --n 15 --m 3 --T 300 --save
+gtiv ternary --n 15 --m 3 --T 300 --save
 ```
 
 This generates side-by-side ternary plots comparing voting dynamics before and after the phase transition threshold. The left plot shows dynamics before the threshold (strategic forces push outcome away from tie), while the right plot shows dynamics after the threshold (anchoring pulls outcome back toward fair tie).
@@ -684,19 +696,19 @@ This generates side-by-side ternary plots comparing voting dynamics before and a
 
 ```bash
 # Display payoff analysis for all time steps
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --show-payoffs
+gtiv strategic-reports --m 3 --n 6 --T 5 --show-payoffs
 
 # Display payoffs only for the last time step
-uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --show-payoffs --payoff-time last
+gtiv strategic-reports --m 3 --n 6 --T 10 --show-payoffs --payoff-time last
 
 # Display payoffs for specific time steps
-uv run python cli.py strategic-reports --m 3 --n 6 --T 10 --show-payoffs --payoff-time "1,3,5"
+gtiv strategic-reports --m 3 --n 6 --T 10 --show-payoffs --payoff-time "1,3,5"
 
 # With custom graph topology
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --graph "0-1,1-2,2-3" --show-payoffs
+gtiv strategic-reports --m 3 --n 6 --T 5 --graph "0-1,1-2,2-3" --show-payoffs
 
 # With alphabetical output format
-uv run python cli.py strategic-reports --m 3 --n 6 --T 5 --show-payoffs --alphabetical
+gtiv strategic-reports --m 3 --n 6 --T 5 --show-payoffs --alphabetical
 ```
 
 The payoff analysis displays Layer 1 pairwise payoffs S^uv = <p_tilde, r_v - r_u> for each edge (u, v) in the graph, where:
@@ -717,7 +729,7 @@ Payoffs are computed once per time step during strategy generation and stored ef
 
 ```
 gt-voting/
-├── cli.py                 # Unified CLI entry point
+├── main.py                # Unified CLI entry point
 ├── cli/                   # CLI modules
 │   ├── rankings_cli.py   # Rankings command
 │   ├── honest_reports_cli.py  # Honest reports command
