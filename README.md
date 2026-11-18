@@ -2,11 +2,19 @@
 
 `gtiv` studies **Repeated Maximal Lotteries**: in iterative simulations using the GT mechanism, reported rankings are aggregated into a maximal lottery each round, and strategies can update reports before the next round. The toolkit also includes other aggregation mechanisms for comparison, and it visualizes how outcomes evolve.
 
-The project takes theoretical inspiration from Ronald L. Rivest and Emily Shen. Their paper, [“An Optimal Single-Winner Preferential Voting System Based on Game Theory”](https://people.csail.mit.edu/rivest/pubs/RS10.conference.pdf), calls their single-round rule the “GT method” and describes it as a special case of maximal-lottery methods, using pairwise vote margins. In `gtiv`, the iterative research question is what happens when maximal-lottery aggregation is applied repeatedly as reports change across rounds. **“Repeated Maximal Lotteries” is our description of that iterative study, not Rivest and Shen's name for their original rule.** See [Project name and terminology](docs/PROJECT_IDENTITY.md) for details.
+Ronald L. Rivest and Emily Shen call their single-round rule the “GT method” and describe it as the special case of maximal-lottery methods based on pairwise vote margins. The iterative research question in `gtiv` is how outcomes evolve when reports respond to each round's lottery. [Rivest and Shen's paper](https://people.csail.mit.edu/rivest/pubs/RS10.conference.pdf) · [Project name and terminology](https://github.com/lucaslopes/gtiv/blob/main/docs/PROJECT_IDENTITY.md)
 
 ## Installation
 
-For development from a source checkout, install the project and its dependencies with:
+Download the 1.0.0 release candidate wheel from its package CI run. Install it
+locally using your usual package index for dependencies.
+
+```bash
+python -m pip install ./gtiv-1.0.0rc1-py3-none-any.whl
+gtiv --help
+```
+
+For development, install from the source checkout:
 
 ```bash
 python -m pip install -e .
@@ -16,12 +24,10 @@ The Python distribution and its only installed command are both named `gtiv`. Th
 
 This project is licensed under the GNU General Public License v3 or later; see `LICENSE`.
 
-The optional Rust GT aggregation backend, its Python API, sampled simulation
-integration, and `gtiv aggregate` command are documented in
-[`docs/guides/RUST_BACKEND.md`](docs/guides/RUST_BACKEND.md). Python/SciPy
-remains the default; Rust dispatch is explicit. The existing
-`strategic-reports` command can opt in with `--aggregation-backend rust` and an
-explicit Rust selector.
+The optional Rust backend, the public `gtiv` Python imports, and the aggregate
+and strategic reports commands are covered in the
+[Rust backend guide](https://github.com/lucaslopes/gtiv/blob/main/docs/guides/RUST_BACKEND.md).
+Python/SciPy is the default solver.
 
 ## CLI Usage
 
@@ -743,7 +749,9 @@ gtiv/
 ├── core/                   # Simulation, aggregation, and utilities
 ├── docs/
 │   └── PROJECT_IDENTITY.md # Project name and research terminology
+├── gtiv/                   # Public Python API
 ├── mechanisms/             # Aggregation mechanisms
+├── native/                 # Rust aggregation and optional Python extension
 ├── plots/                  # Plotting utilities
 ├── strategies/             # Voter strategies
 ├── .gitignore
@@ -770,8 +778,11 @@ New mechanisms can be added by creating a new class file in `mechanisms/` that i
 
 ## Development
 
-The repository currently has no standalone test suite. The `Python package` GitHub Actions workflow builds the wheel and source distribution, installs each artifact, and checks `gtiv --help` on Linux, macOS, and Windows. To run the CLI help locally from a source checkout:
+The package matrix exercises Python and the optional native extension on
+CPython 3.12 with Ubuntu, macOS, and Windows hosted runners. To run the
+Python checks from a development checkout:
 
 ```bash
-python main.py --help
+python -m unittest discover -s tests -v
+python verify_algorithm.py
 ```
