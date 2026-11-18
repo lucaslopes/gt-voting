@@ -1,8 +1,22 @@
 # Game-Theoretic Iterative Voting
 
+[![Package CI](https://github.com/lucaslopes/gtiv/actions/workflows/python-package.yml/badge.svg?branch=main)](https://github.com/lucaslopes/gtiv/actions/workflows/python-package.yml)
+[![Web visualization](https://github.com/lucaslopes/gtiv/actions/workflows/pages.yml/badge.svg?branch=main)](https://github.com/lucaslopes/gtiv/actions/workflows/pages.yml)
+[![GitHub release](https://img.shields.io/github/v/release/lucaslopes/gtiv)](https://github.com/lucaslopes/gtiv/releases/latest)
+[![TestPyPI](https://img.shields.io/badge/TestPyPI-1.0.0-blue)](https://test.pypi.org/project/gtiv/1.0.0/)
+[![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue)](https://github.com/lucaslopes/gtiv/blob/main/pyproject.toml)
+[![License](https://img.shields.io/badge/license-GPL--3.0--or--later-orange)](LICENSE)
+
 `gtiv` studies **Repeated Maximal Lotteries**: in iterative simulations using the GT mechanism, reported rankings are aggregated into a maximal lottery each round, and strategies can update reports before the next round. The toolkit also includes other aggregation mechanisms for comparison, and it visualizes how outcomes evolve.
 
 Ronald L. Rivest and Emily Shen call their single-round rule the “GT method” and describe it as the special case of maximal-lottery methods based on pairwise vote margins. The iterative research question in `gtiv` is how outcomes evolve when reports respond to each round's lottery. [Rivest and Shen's paper](https://people.csail.mit.edu/rivest/pubs/RS10.conference.pdf) · [Project name and terminology](https://github.com/lucaslopes/gtiv/blob/main/docs/PROJECT_IDENTITY.md)
+
+## Interactive visualization
+
+[Open The Ballot Jar](https://lucaslopes.github.io/gtiv/) to see how reported rankings
+produce a maximal lottery, then adjust loyalty, volatility, and receptivity in the
+playground. The browser simulation uses synthetic three-candidate scenarios. Its
+round-by-round tests compare the TypeScript model with the public Rust assembly.
 
 ## Installation
 

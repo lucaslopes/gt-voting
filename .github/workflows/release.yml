@@ -1,0 +1,106 @@
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: GitHub release tag (for example v1.0.0)
+        required: true
+        type: string
+      source_sha:
+        description: Full approved commit SHA of the release tag
+        required: true
+        type: string
+      publish:
+        description: Upload the verified release assets to PyPI
+        default: false
+        type: boolean
+
+concurrency:
+  group: pypi-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check inputs
+        env:
+          TAG: ${{ inputs.tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify the tagged release and its distributions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease \
+            --jq '.isDraft or .isPrerelease' | grep -qx false
+          version="${TAG#v}"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir release-assets \
+            --pattern "gtiv-${version}-py3-none-any.whl" \
+            --pattern "gtiv-${version}.tar.gz" --pattern SHA256SUMS
+          python - <<'PY'
+          import hashlib
+          import os
+          import shutil
+          import tomllib
+          from pathlib import Path
+
+          version = os.environ["TAG"][1:]
+          project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
+          if (project["name"], project["version"]) != ("gtiv", version):
+              raise SystemExit("Tagged package name or version mismatch")
+
+          assets = Path("release-assets")
+          expected = {f"gtiv-{version}-py3-none-any.whl", f"gtiv-{version}.tar.gz"}
+          hashes = dict(reversed(line.split()) for line in
+                        (assets / "SHA256SUMS").read_text().splitlines())
+          if hashes.keys() != expected:
+              raise SystemExit("Unexpected release checksum list")
+          Path("dist").mkdir()
+          for filename in sorted(expected):
+              archive = assets / filename
+              if hashlib.sha256(archive.read_bytes()).hexdigest() != hashes[filename]:
+                  raise SystemExit(f"Checksum mismatch: {filename}")
+              shutil.copyfile(archive, Path("dist") / filename)
+          PY
+          python -m pip install twine
+          python -m twine check --strict dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-release-distributions
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    if: inputs.publish
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/gtiv
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-release-distributions
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086
+        with:
+          packages-dir: dist/
