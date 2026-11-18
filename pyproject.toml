@@ -31,4 +31,4 @@ py-modules = ["main"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["cli*", "core*", "mechanisms*", "plots*", "strategies*"]
+include = ["gtiv", "cli*", "core*", "mechanisms*", "plots*", "strategies*"]

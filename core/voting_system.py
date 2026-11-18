@@ -10,7 +10,8 @@ from strategies import get_strategy_instance
 
 class IterativeVotingSystem:
     def __init__(self, m, n, alpha, eta, beta, baselines=None, rng=None, graph=None, 
-                 use_expected_score=False, strategy="gt_strategy", mechanism="GT"):
+                 use_expected_score=False, strategy="gt_strategy", mechanism="GT",
+                 aggregation_backend="python", aggregation_selector="lp"):
         """
         Initialize iterative voting system.
         
@@ -28,7 +29,26 @@ class IterativeVotingSystem:
                      The strategy defines how voters sample/update their rankings.
             mechanism: Aggregation mechanism name (default: "GT").
                       The mechanism defines how rankings are aggregated into outcomes.
+            aggregation_backend: Sampled aggregation backend: ``python`` (default),
+                explicit ``rust``, or conservative ``auto``.
+            aggregation_selector: Solver selector. ``lp`` preserves the Python
+                default; Rust requires ``vertex`` or ``minimum_norm`` explicitly.
         """
+        if aggregation_backend not in {"python", "rust", "auto"}:
+            raise ValueError("aggregation_backend must be 'python', 'rust', or 'auto'")
+        if aggregation_selector not in {
+            "lp", "vertex", "minimum_norm", "minimum-norm", "qp-balanced"
+        }:
+            raise ValueError(
+                "aggregation_selector must be 'lp', 'vertex', or 'minimum_norm'"
+            )
+        if use_expected_score and aggregation_backend == "rust":
+            from core.backends import BackendUnavailableError
+
+            raise BackendUnavailableError(
+                "Rust aggregation supports sampled rankings only; "
+                "use_expected_score must be False"
+            )
         self.m = m
         self.n = n
         self.alpha = alpha
@@ -38,6 +58,8 @@ class IterativeVotingSystem:
         self.graph = graph
         self.use_expected_score = use_expected_score
         self.mechanism = mechanism
+        self.aggregation_backend = aggregation_backend
+        self.aggregation_selector = aggregation_selector
         
         # Create or use provided strategy instance
         # Strategy defines the sampling/aggregation logic (e.g., Algorithm 1 line 3)
@@ -241,7 +263,14 @@ class IterativeVotingSystem:
             # Aggregate using the specified mechanism (default: GT)
             # The mechanism defines how rankings are aggregated into outcomes
             from core.aggregator_core import aggregate_rankings
-            p_t = np.array(aggregate_rankings(sampled_rankings, mechanism=self.mechanism))
+            p_t = np.array(
+                aggregate_rankings(
+                    sampled_rankings,
+                    mechanism=self.mechanism,
+                    backend=self.aggregation_backend,
+                    selector=self.aggregation_selector,
+                )
+            )
         
         p_tilde = p_t - (1.0 / self.m)
         

@@ -30,7 +30,9 @@ def get_aggregation_function(mechanism_name="GT"):
     return aggregation_function
 
 
-def aggregate_rankings(reported_rankings, mechanism="GT"):
+def aggregate_rankings(
+    reported_rankings, mechanism="GT", *, backend="python", selector="lp"
+):
     """
     Aggregate n reported rankings into a probability distribution over candidates.
     
@@ -43,6 +45,10 @@ def aggregate_rankings(reported_rankings, mechanism="GT"):
                           Each ranking is a tuple where earlier positions indicate preference.
                           All rankings must have the same set of candidates.
         mechanism: Aggregation mechanism name (default: "GT")
+        backend: ``python`` (default), explicit ``rust``, or conservative ``auto``.
+            Non-default backends return the same probability-list shape.
+        selector: Solver selector. ``lp`` preserves the Python HiGHS path; Rust
+            requires an explicit ``vertex`` or ``minimum_norm`` selector.
     
     Returns:
         List of probabilities in candidate order (e.g., [0.4, 0.3, 0.3] for candidates 0, 1, 2)
@@ -67,6 +73,19 @@ def aggregate_rankings(reported_rankings, mechanism="GT"):
         >>> # GT finds optimal mixed strategy via linear programming
         >>> # For symmetric cycle: [0.333..., 0.333..., 0.333...]
     """
+    # Preserve the historical implementation for every existing default call.
+    # The facade imports this function only with default backend arguments.
+    if backend != "python" or selector != "lp":
+        from core.backends import aggregate_rankings as aggregate_with_backend
+
+        result = aggregate_with_backend(
+            reported_rankings,
+            mechanism=mechanism,
+            backend=backend,
+            selector=selector,
+        )
+        return result["probabilities"]
+
     if not reported_rankings:
         raise ValueError("reported_rankings cannot be empty")
     
