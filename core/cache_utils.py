@@ -224,7 +224,11 @@ def save_cached_run(
     Returns (run_dir, data_path).
     """
     repo_root = _find_repo_root(root)
-    run_dir = get_run_path(command=command, params=params, prefix_parts=prefix_parts, root=repo_root)
+    # Use the same root input as get_run_path() so root discovery happens only
+    # once. In an installed wheel, discovery can fall back to ``core``; passing
+    # that result back through discovery would normalize it to ``site-packages``
+    # and write to a different path than the CLI reports and later loads.
+    run_dir = get_run_path(command=command, params=params, prefix_parts=prefix_parts, root=root)
     os.makedirs(run_dir, exist_ok=True)
 
     meta_path = run_dir / "metadata.json"
