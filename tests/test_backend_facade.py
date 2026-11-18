@@ -111,6 +111,7 @@ class IterativeVotingBackendTests(unittest.TestCase):
             alpha=0.1,
             eta=0.1,
             beta=1.0,
+            baselines=[0, 0],
             rng=np.random.default_rng(7),
             aggregation_backend="rust",
             aggregation_selector="vertex",

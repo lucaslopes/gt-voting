@@ -18,7 +18,9 @@ def generate_strategic_reports(
     # SimilarityStrategy parameters (for backward compatibility)
     distance_metric="spearman",
     # Graph topology
-    graph=None
+    graph=None,
+    aggregation_backend="python",
+    aggregation_selector="lp",
 ):
     """
     Generate strategic reports that evolve over T iterations.
@@ -52,6 +54,10 @@ def generate_strategic_reports(
         graph: Optional igraph.Graph object defining social network topology.
                If None (default), uses complete graph (deg = n-1 for all voters).
                Only used by GTStrategy.
+        aggregation_backend: ``python`` (default), explicit ``rust``, or conservative
+               ``auto`` for sampled GT aggregation.
+        aggregation_selector: Solver selector. Rust requires ``vertex`` or
+               ``minimum_norm`` explicitly; ``lp`` preserves Python defaults.
     
     Returns:
         dict with at least the following key:
@@ -67,9 +73,9 @@ def generate_strategic_reports(
                 voter and time step, the probability mass the internal strategy
                 distribution assigns to the selected (most likely) ranking.
             "p_history": numpy array of shape [T, m] giving instantaneous
-                outcomes p^t for t=1..T.
+                outcomes p^t for t=1..T, with columns indexed by numeric candidate ID.
             "p_avg_history": numpy array of shape [T, m] giving time-averaged
-                outcomes \\hat{p}^t for t=1..T.
+                outcomes \\hat{p}^t for t=1..T in the same candidate order.
             "payoffs_history": list of T dicts, where payoffs_history[t-1] maps
                 edge tuples (u, v) to payoff values S^uv = <p_tilde, r_v - r_u>
                 at time step t (for t=1..T).
@@ -81,6 +87,19 @@ def generate_strategic_reports(
     if strategy not in available_strategies:
         raise ValueError(
             f"Unknown strategy: {strategy}. Available: {available_strategies}"
+        )
+    from core.backends import validate_backend_options
+
+    aggregation_selector = validate_backend_options(
+        aggregation_backend, aggregation_selector
+    )
+    if strategy != "gt_strategy" and (
+        aggregation_backend != "python" or aggregation_selector != "lp"
+    ):
+        from core.backends import BackendUnavailableError
+
+        raise BackendUnavailableError(
+            "the optional aggregation backend is supported only by gt_strategy"
         )
     
     # Get strategy instance with appropriate parameters
@@ -95,7 +114,14 @@ def generate_strategic_reports(
         )
         # GTStrategy doesn't use distance_metric in generate_reports
         result = strategy_instance.generate_reports(
-            honest_reports, T, m, seed=seed, rng=rng, graph=graph
+            honest_reports,
+            T,
+            m,
+            seed=seed,
+            rng=rng,
+            graph=graph,
+            aggregation_backend=aggregation_backend,
+            aggregation_selector=aggregation_selector,
         )
     elif strategy == "similarity_strategy":
         strategy_instance = get_strategy_instance(

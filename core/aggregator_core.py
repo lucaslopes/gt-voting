@@ -3,6 +3,12 @@
 from mechanisms import get_mechanism
 
 
+def reorder_probabilities(probabilities, candidates, candidate_order):
+    """Map a lottery's coordinates to the candidate order used by its consumer."""
+    by_candidate = dict(zip(candidates, probabilities, strict=True))
+    return [by_candidate[candidate] for candidate in candidate_order]
+
+
 def get_aggregation_function(mechanism_name="GT"):
     """
     Get aggregation function by name from mechanism registry.

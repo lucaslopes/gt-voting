@@ -21,13 +21,14 @@ from typing import Any, Dict, Iterable, Optional, Tuple
 import pickle
 
 
-# Increment if the on-disk representation of cached data changes (per command).
-# These are intentionally simple: cache invalidation is parameter-based by default.
-DASHBOARD_CACHE_SCHEMA_VERSION = 1
-PHASE_TRANSITION_CACHE_SCHEMA_VERSION = 1
-TERNARY_CACHE_SCHEMA_VERSION = 1
+# Increment when cached data changes shape or its meaning changes.
+DASHBOARD_CACHE_SCHEMA_VERSION = 2
+PHASE_TRANSITION_CACHE_SCHEMA_VERSION = 2
+TERNARY_CACHE_SCHEMA_VERSION = 2
 STRATEGIC_REPORTS_CACHE_SCHEMA_VERSION = 1
+STRATEGIC_REPORTS_GT_CACHE_SCHEMA_VERSION = 2
 PROPORTIONS_CACHE_SCHEMA_VERSION = 1
+PROPORTIONS_GT_CACHE_SCHEMA_VERSION = 2
 HONEST_REPORTS_CACHE_SCHEMA_VERSION = 1
 RANKINGS_CACHE_SCHEMA_VERSION = 1
 

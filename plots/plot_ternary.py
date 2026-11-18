@@ -289,11 +289,13 @@ class TernaryPlot(BasePlot):
         # Compute initial baseline outcome if baselines are provided
         p_initial_baseline = None
         if baselines is not None:
+            from core.aggregator_core import aggregate_rankings, reorder_probabilities
             from core.honest_reports import baseline_indices_to_rankings
-            from mechanisms.GT import GT
             initial_rankings = baseline_indices_to_rankings(baselines, m)
-            gt_initial = GT()
-            p_initial_baseline = np.array(gt_initial.aggregate(initial_rankings))
+            probabilities = aggregate_rankings(initial_rankings)
+            p_initial_baseline = np.array(
+                reorder_probabilities(probabilities, initial_rankings[0], range(m))
+            )
         
         # Plot each scenario using the reusable helper function
         handles_all = None

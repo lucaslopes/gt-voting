@@ -62,7 +62,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         output = run(args)
-    except (BackendUnavailableError, ValueError) as exc:
+    except (BackendUnavailableError, OverflowError, ValueError) as exc:
         parser.error(str(exc))
     print(output)
 

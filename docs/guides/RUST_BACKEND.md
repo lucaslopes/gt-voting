@@ -63,8 +63,48 @@ performance validation against this public `main` implementation is complete.
 
 ## Iterative simulation
 
-For sampled dynamics, the simulator can opt in to Rust aggregation while Python
-continues to sample rankings and update agent strategies:
+The existing report-generation API can opt in to Rust aggregation for sampled
+GT dynamics while Python continues to sample rankings and update agent
+strategies:
+
+```python
+from gtiv import generate_strategic_reports
+
+result = generate_strategic_reports(
+    honest_reports=[(0, 1, 2), (1, 2, 0)],
+    T=20,
+    m=3,
+    seed=7,
+    aggregation_backend="rust",
+    aggregation_selector="minimum_norm",
+)
+reports = result["reports"]
+outcomes = result["p_history"]
+provenance = result["aggregation_metadata"]
+```
+
+The columns of `p_history` and `p_avg_history` always follow numeric candidate
+IDs (`0` through `m - 1`), even if the first sampled ballot orders them
+differently. We apply the same order before calculating payoffs and updating
+reports. This corrects older simulations that could associate a probability
+with the wrong candidate. The CLI recomputes affected cached trajectories.
+
+The `strategic-reports` CLI exposes the same opt-in path:
+
+```sh
+gtiv strategic-reports \
+  --m 3 --n 15 --T 20 --seed 7 \
+  --aggregation-backend rust \
+  --aggregation-selector minimum_norm
+```
+
+Nondefault backend and selector requests are part of this command's cache
+identity, and the output reports which backend ran. This avoids serving a
+Python result for a Rust request (or the reverse) while preserving the existing
+Python-default cache identity.
+
+The lower-level `IterativeVotingSystem` class also accepts the options when a
+caller drives the loop one step at a time:
 
 ```python
 from gtiv import IterativeVotingSystem
