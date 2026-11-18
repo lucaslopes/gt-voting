@@ -1,5 +1,8 @@
+import hashlib
+import importlib
 import importlib.util
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -78,6 +81,12 @@ class BackendFacadeTests(unittest.TestCase):
         importlib.util.find_spec("gtiv_native"), "optional native extension is not installed"
     )
     def test_installed_native_extension_runs_through_public_facade(self):
+        native_module = importlib.import_module("gtiv_native")
+        native_extension = getattr(native_module, "gtiv_native", native_module)
+        extension_path = Path(native_extension.__file__)
+        expected_binary_sha256 = hashlib.sha256(
+            extension_path.read_bytes()
+        ).hexdigest()
         result = aggregate_rankings(
             [(11, 7), (11, 7), (7, 11)],
             backend="rust",
@@ -88,7 +97,9 @@ class BackendFacadeTests(unittest.TestCase):
         np.testing.assert_allclose(result["probabilities"], [1.0, 0.0], atol=1e-12)
         self.assertEqual(result["metadata"]["backend_used"], "rust")
         self.assertEqual(result["metadata"]["native_api_version"], 1)
-        self.assertEqual(len(result["metadata"]["native_binary_sha256"]), 64)
+        self.assertEqual(
+            result["metadata"]["native_binary_sha256"], expected_binary_sha256
+        )
 
     def test_incomplete_and_duplicate_rankings_are_rejected(self):
         for ballots in (
