@@ -48,6 +48,23 @@ jobs:
         run: |
           cd "$RUNNER_TEMP"
           gtiv --help
+      - name: Set up Rust when the aggregation crate is present
+        if: hashFiles('native/gtiv-three/Cargo.toml') != ''
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+      - name: Check Rust formatting when the aggregation crate is present
+        if: hashFiles('native/gtiv-three/Cargo.toml') != ''
+        run: cargo fmt --check --manifest-path native/gtiv-three/Cargo.toml
+      - name: Test Rust aggregation crate when present
+        if: hashFiles('native/gtiv-three/Cargo.toml') != ''
+        run: cargo test --locked --manifest-path native/gtiv-three/Cargo.toml
+      - name: Test Rust aggregation crate in release mode when present
+        if: hashFiles('native/gtiv-three/Cargo.toml') != ''
+        run: cargo test --locked --release --manifest-path native/gtiv-three/Cargo.toml
+      - name: Build Rust examples when the aggregation crate is present
+        if: hashFiles('native/gtiv-three/Cargo.toml') != ''
+        run: cargo build --locked --examples --manifest-path native/gtiv-three/Cargo.toml
       - name: Prepare package artifacts and SHA-256 manifest
         shell: bash
         run: |
