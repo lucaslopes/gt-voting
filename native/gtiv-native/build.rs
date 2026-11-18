@@ -10,6 +10,10 @@ fn main() {
     let files = [
         ("gtiv-three/src/lib.rs", "../gtiv-three/src/lib.rs"),
         ("gtiv-three/src/general.rs", "../gtiv-three/src/general.rs"),
+        (
+            "gtiv-three/src/dynamics.rs",
+            "../gtiv-three/src/dynamics.rs",
+        ),
         ("gtiv-native/src/lib.rs", "src/lib.rs"),
         ("gtiv-native/build.rs", "build.rs"),
         ("gtiv-native/Cargo.lock", "Cargo.lock"),

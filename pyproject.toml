@@ -1,6 +1,6 @@
 [project]
 name = "gtiv"
-version = "1.0.0rc1"
+version = "1.0.0"
 description = "Research toolkit for iterative voting with maximal-lottery aggregation"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]

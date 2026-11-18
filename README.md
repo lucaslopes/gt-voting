@@ -6,11 +6,12 @@ Ronald L. Rivest and Emily Shen call their single-round rule the “GT method”
 
 ## Installation
 
-Download the 1.0.0 release candidate wheel from its package CI run. Install it
-locally using your usual package index for dependencies.
+Download the 1.0.0 release from TestPyPI. The second command resolves
+dependencies from your usual Python package index.
 
 ```bash
-python -m pip install ./gtiv-1.0.0rc1-py3-none-any.whl
+python -m pip download --index-url https://test.pypi.org/simple/ --no-deps --only-binary=:all: gtiv==1.0.0
+python -m pip install ./gtiv-1.0.0-py3-none-any.whl
 gtiv --help
 ```
 
