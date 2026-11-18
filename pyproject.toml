@@ -1,7 +1,7 @@
 [project]
-name = "gt-voting"
+name = "gtiv"
 version = "0.1.0"
-description = "Python toolkit for iterative preferential voting and GTIV research"
+description = "Research toolkit for iterative voting with maximal-lottery aggregation"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 readme = "README.md"
@@ -14,9 +14,13 @@ dependencies = [
     "scipy>=1.16.3",
 ]
 
+[project.urls]
+Homepage = "https://github.com/lucaslopes/gtiv"
+Repository = "https://github.com/lucaslopes/gtiv"
+Issues = "https://github.com/lucaslopes/gtiv/issues"
+
 [project.scripts]
 gtiv = "main:main"
-gt-voting = "main:main"
 
 [build-system]
 requires = ["setuptools>=77.0.3", "wheel"]
