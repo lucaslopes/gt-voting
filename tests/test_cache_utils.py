@@ -1,4 +1,6 @@
+import json
 import os
+import pickle
 import tempfile
 import unittest
 from pathlib import Path
@@ -70,6 +72,64 @@ class InstalledCachePathTests(unittest.TestCase):
                         get_command_cache_dir("rankings"), override.resolve() / "rankings_runs"
                     )
                     self.assertEqual(get_command_cache_dir("rankings", root=checkout), original)
+
+
+class CachePublicationTests(unittest.TestCase):
+    def setUp(self):
+        cache_root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        (cache_root / "pyproject.toml").touch()
+        self.entry = {
+            "command": "strategic_reports",
+            "params": {"seed": 19},
+            "prefix_parts": ["seed19"],
+            "schema_version": 1,
+            "root": cache_root,
+        }
+        run_dir, self.data_path = save_cached_run(data={"rounds": 2}, **self.entry)
+        self.metadata_path = run_dir / "metadata.json"
+
+    def test_failure_during_staging_preserves_the_previous_run(self):
+        previous = load_cached_run(**self.entry)
+        with patch("core.cache_utils.json.dump", side_effect=OSError("disk full")):
+            with self.assertRaisesRegex(OSError, "disk full"):
+                save_cached_run(data={"rounds": 3}, **self.entry)
+        self.assertEqual(load_cached_run(**self.entry), previous)
+        self.assertEqual(
+            sorted(file.name for file in self.data_path.parent.iterdir()),
+            ["data.pkl", "metadata.json"],
+        )
+
+    def test_replacement_failure_does_not_return_stale_data_with_new_metadata(self):
+        replace = Path.replace
+
+        def fail_data_replacement(staged, target):
+            if target == self.data_path:
+                raise OSError("replacement failed")
+            return replace(staged, target)
+
+        with patch.object(Path, "replace", fail_data_replacement):
+            with self.assertRaisesRegex(OSError, "replacement failed"):
+                save_cached_run(data={"rounds": 3}, **self.entry)
+        self.assertEqual(load_cached_run(**self.entry), (None, None))
+        self.assertEqual(pickle.loads(self.data_path.read_bytes()), {"rounds": 2})
+
+    def test_loads_legacy_entries_until_a_writer_replaces_the_metadata(self):
+        legacy = json.loads(self.metadata_path.read_bytes())
+        del legacy["data_sha256"]
+        self.metadata_path.write_text(json.dumps(legacy), encoding="utf-8")
+        self.assertEqual(load_cached_run(**self.entry), ({"rounds": 2}, legacy))
+        original_open = Path.open
+
+        def save_before_opening_data(cache_file, *args, **kwargs):
+            if cache_file == self.data_path:
+                save_cached_run(data={"rounds": 3}, **self.entry)
+            return original_open(cache_file, *args, **kwargs)
+
+        with patch.object(Path, "open", save_before_opening_data):
+            self.assertEqual(load_cached_run(**self.entry), (None, None))
+        data, metadata = load_cached_run(**self.entry)
+        self.assertEqual(data, {"rounds": 3})
+        self.assertEqual(len(metadata["data_sha256"]), 64)
 
 
 if __name__ == "__main__":

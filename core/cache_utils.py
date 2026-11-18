@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -213,11 +214,18 @@ def load_cached_run(
     if not meta_path.exists() or not data_path.exists():
         return None, None
     try:
-        with meta_path.open("r", encoding="utf-8") as f:
-            metadata = json.load(f)
+        metadata_bytes = meta_path.read_bytes()
+        metadata = json.loads(metadata_bytes)
         if metadata.get("schema_version") != schema_version:
             return None, None
         with data_path.open("rb") as f:
+            if "data_sha256" in metadata:
+                if hashlib.file_digest(f, "sha256").hexdigest() != metadata["data_sha256"]:
+                    return None, None
+                f.seek(0)
+            elif meta_path.read_bytes() != metadata_bytes:
+                # A newer writer can replace legacy metadata before publishing data.
+                return None, None
             data = pickle.load(f)
         return data, metadata
     except Exception:
@@ -255,11 +263,20 @@ def save_cached_run(
     if git_commit is not None:
         metadata["git_commit"] = git_commit
 
-    with data_path.open("wb") as f:
-        pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+    with tempfile.TemporaryDirectory(prefix=".pending-", dir=run_dir) as staging:
+        staged_data = Path(staging) / data_path.name
+        staged_metadata = Path(staging) / meta_path.name
+        with staged_data.open("w+b") as f:
+            pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+            f.seek(0)
+            metadata["data_sha256"] = hashlib.file_digest(f, "sha256").hexdigest()
+        with staged_metadata.open("w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2, sort_keys=True)
 
-    with meta_path.open("w", encoding="utf-8") as f:
-        json.dump(metadata, f, indent=2, sort_keys=True)
+        # Publish the digest before the data so a reader using legacy metadata
+        # cannot accept newly published data as an unsigned entry.
+        staged_metadata.replace(meta_path)
+        staged_data.replace(data_path)
 
     return run_dir, data_path
 

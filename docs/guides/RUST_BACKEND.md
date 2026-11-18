@@ -111,6 +111,8 @@ Set `GTIV_CACHE_DIR` to choose where CLI commands store their caches. A source
 checkout defaults to its `data/` directory. Installed packages use the current
 user's cache directory, so CLI commands also work when Python packages are
 installed read-only for multiple users.
+If an interrupted or overlapping write leaves a mismatched entry, the
+next invocation recomputes it.
 
 The lower-level `IterativeVotingSystem` class also accepts the options when a
 caller drives the loop one step at a time:
