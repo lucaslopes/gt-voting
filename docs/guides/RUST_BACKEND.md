@@ -16,12 +16,17 @@ maturin build --release --locked --manifest-path native/gtiv-native/Cargo.toml -
 python -m pip install --no-deps dist/gtiv_native-*.whl
 ```
 
-The `gtiv-native` package name and release availability must be checked against
-the package index before any publication. This repository's native build
-workflow checks wheels and a source distribution on Linux, macOS, and Windows;
-that workflow is evidence only after it has run for the exact source revision.
+Use the release's source revision when building an extension for a particular
+`gtiv` release. Its matching GitHub Actions package run also retains native
+wheel and source archive artifacts. Install the separate native extension
+alongside the Python distribution to enable Rust.
 
 ## Python API
+
+The supported imports are `aggregate_rankings`, `backend_capabilities`,
+`BackendUnavailableError`, `generate_strategic_reports`, and
+`IterativeVotingSystem` from `gtiv`. The CLI and the guide below describe the
+public arguments and result fields. Native solver details provide diagnostics.
 
 ```python
 from gtiv import aggregate_rankings, backend_capabilities

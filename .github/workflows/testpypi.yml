@@ -8,6 +8,18 @@ on:
         description: Exact package version to publish
         required: true
         type: string
+      source_sha:
+        description: Full commit SHA reviewed for this release
+        required: true
+        type: string
+      publish:
+        description: Upload the validated distributions to TestPyPI
+        default: false
+        type: boolean
+
+concurrency:
+  group: testpypi-release
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -25,12 +37,15 @@ jobs:
       - name: Check requested version against package metadata
         env:
           EXPECTED_VERSION: ${{ inputs.version }}
+          EXPECTED_SHA: ${{ inputs.source_sha }}
         run: |
           python - <<'PY'
           import os
           import tomllib
           from pathlib import Path
 
+          if os.environ["EXPECTED_SHA"] != os.environ["GITHUB_SHA"]:
+              raise SystemExit("The requested commit differs from this run")
           project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
           if project["name"] != "gtiv":
               raise SystemExit("The distribution must be named gtiv")
@@ -41,7 +56,7 @@ jobs:
         run: |
           python -m pip install build twine
           python -m build --sdist --wheel
-          python -m twine check dist/*
+          python -m twine check --strict dist/*
       - name: Upload distributions
         uses: actions/upload-artifact@v4
         with:
@@ -50,8 +65,72 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  publish:
+  verify:
     needs: build
+    name: Verify release artifacts (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+      - name: Install and check both distributions in separate environments
+        shell: bash
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+          MPLBACKEND: Agg
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+          import tempfile
+          import venv
+          from pathlib import Path
+
+          files = sorted(Path("dist").resolve().iterdir())
+          version = os.environ["EXPECTED_VERSION"]
+          if {p.name for p in files} != {
+              f"gtiv-{version}-py3-none-any.whl",
+              f"gtiv-{version}.tar.gz",
+          }:
+              raise SystemExit("Unexpected release artifact set")
+          bin_dir, exe = ("Scripts", ".exe") if os.name == "nt" else ("bin", "")
+          for artifact in files:
+              with tempfile.TemporaryDirectory() as temp:
+                  root = Path(temp)
+                  env = root / "env"
+                  venv.EnvBuilder(with_pip=True).create(env)
+                  python = env / bin_dir / f"python{exe}"
+                  gtiv = env / bin_dir / f"gtiv{exe}"
+                  subprocess.run(
+                      [str(python), "-m", "pip", "install", str(artifact)],
+                      cwd=root,
+                      check=True,
+                  )
+                  subprocess.run(
+                      [str(python), "-c", "import gtiv"], cwd=root, check=True
+                  )
+                  subprocess.run([str(gtiv), "--help"], cwd=root, check=True)
+                  subprocess.run(
+                      [str(gtiv), "aggregate", "--ballot", "0,1"],
+                      cwd=root,
+                      env={**os.environ, "GTIV_CACHE_DIR": str(root / "cache")},
+                      check=True,
+                  )
+          PY
+
+  publish:
+    if: inputs.publish
+    needs: [build, verify]
     name: Publish to TestPyPI
     runs-on: ubuntu-latest
     environment:
@@ -61,7 +140,7 @@ jobs:
       id-token: write
     steps:
       - name: Download distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: python-package-distributions
           path: dist/
