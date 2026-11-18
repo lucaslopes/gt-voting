@@ -9,7 +9,12 @@
 //! returned indices are candidate identifiers 0, 1, 2; the Python GT API
 //! returns values in the order candidates appear in the first ballot.
 
+mod dynamics;
 mod general;
+pub use dynamics::{
+    clique, draw_ranking, logit_response, scores, update_tendency, Arms, Assembly, Channel,
+    RankingSpace, ReplayUniforms, Round, SplitMix64, UniformSource, VoterParams, SOFTMAX_FLOOR,
+};
 pub use general::{
     aggregate_rankings, aggregate_rankings_with, check_equilibrium, face_certificate,
     margins_from_rankings, minimum_norm_point, solve_margins, solve_margins_with, FaceCertificate,
