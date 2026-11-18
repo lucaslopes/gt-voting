@@ -48,9 +48,10 @@ uv run python -m cli.ternary_cli [options]
 
 ### Cached runs (speeding up repeated plots)
 
-Many commands run expensive simulations before plotting. Results are now cached on disk under:
-
-- `data/*_runs/` (e.g. `data/dashboard_runs/`, `data/phase_transition_runs/`, `data/ternary_runs/`, etc.)
+Many commands cache simulation results before plotting. Source checkouts use
+`data/*_runs/`, such as `data/dashboard_runs/`. Installed packages store
+these folders in the current user's cache directory. Set `GTIV_CACHE_DIR`
+to use a different location.
 
 On repeat runs with the **same parameters**, the CLI will load cached results instead of recomputing, and it will print a line like:
 

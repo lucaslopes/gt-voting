@@ -3,7 +3,12 @@ import numpy as np
 from core.honest_reports import generate_honest_reports, parse_baselines, format_rankings_readable
 from core.rankings_core import generate_rankings, candidate_labels
 from core.strategic_reports import generate_strategic_reports
-from core.backends import BackendUnavailableError, validate_backend_options
+from core.backends import (
+    BackendUnavailableError,
+    _native_sha256,
+    require_native_backend,
+    validate_backend_options,
+)
 from core.graph_utils import parse_edge_list
 from core.cache_utils import (
     normalize_baselines_str,
@@ -39,6 +44,17 @@ def generate_pdf_filename(args):
     parts.append(args.strategy)
     
     return "_".join(parts) + ".pdf"
+
+
+def _uses_native_binary(results, sha256):
+    if not isinstance(results, dict):
+        return False
+    metadata = results.get("aggregation_metadata")
+    return (
+        isinstance(metadata, dict)
+        and metadata.get("backend_used") == "rust"
+        and metadata.get("native_binary_sha256") == sha256
+    )
 
 
 def main(args=None):
@@ -308,6 +324,15 @@ Examples:
         except ValueError as e:
             parser.error(f"Invalid graph specification: {e}")
 
+    # A cache hit still requires the explicit Rust backend and the same binary.
+    native_sha256 = None
+    if args.aggregation_backend == "rust":
+        try:
+            native_sha256 = _native_sha256(require_native_backend())
+        except BackendUnavailableError as exc:
+            parser.error(str(exc))
+    cache_enabled = args.aggregation_backend != "rust" or native_sha256 is not None
+
     # Caching: strategic reports are expensive when T is large; cache the generated results.
     cache_params = {
         "n": int(n),
@@ -340,6 +365,8 @@ Examples:
         cache_prefix_parts.extend(
             [f"backend-{args.aggregation_backend}", f"selector-{args.aggregation_selector}"]
         )
+    if native_sha256 is not None:
+        cache_params["native_binary_sha256"] = native_sha256
     if args.baselines:
         cache_prefix_parts.append("baselines")
     if args.graph:
@@ -353,20 +380,30 @@ Examples:
         else STRATEGIC_REPORTS_CACHE_SCHEMA_VERSION
     )
     cached = None
-    if not args.force_recompute:
-        cached, _meta = load_cached_run(
+    if cache_enabled and not args.force_recompute:
+        cached, cache_metadata = load_cached_run(
             command="strategic_reports",
             params=cache_params,
             prefix_parts=cache_prefix_parts,
             schema_version=cache_schema_version,
         )
+        if cached is not None and native_sha256 is not None and (
+            not isinstance(cached, dict)
+            or not isinstance(cache_metadata, dict)
+            or cache_metadata.get("params") != cache_params
+            or not _uses_native_binary(cached.get("results"), native_sha256)
+        ):
+            cached = None
         if cached is not None:
             run_dir = get_run_path(command="strategic_reports", params=cache_params, prefix_parts=cache_prefix_parts)
             print(f"[cache] strategic_reports hit: {run_dir}")
     
     if cached is None:
-        run_dir = get_run_path(command="strategic_reports", params=cache_params, prefix_parts=cache_prefix_parts)
-        print(f"[cache] strategic_reports miss: {run_dir}")
+        if cache_enabled:
+            run_dir = get_run_path(command="strategic_reports", params=cache_params, prefix_parts=cache_prefix_parts)
+            print(f"[cache] strategic_reports miss: {run_dir}")
+        else:
+            print("[cache] strategic_reports skipped: the Rust binary could not be fingerprinted")
 
         # Generate honest reports
         try:
@@ -405,13 +442,14 @@ Examples:
         except (BackendUnavailableError, OverflowError, ValueError) as e:
             parser.error(str(e))
 
-        save_cached_run(
-            command="strategic_reports",
-            params=cache_params,
-            prefix_parts=cache_prefix_parts,
-            schema_version=cache_schema_version,
-            data={"n": n, "honest_reports": honest_reports, "results": results},
-        )
+        if cache_enabled and (native_sha256 is None or _uses_native_binary(results, native_sha256)):
+            save_cached_run(
+                command="strategic_reports",
+                params=cache_params,
+                prefix_parts=cache_prefix_parts,
+                schema_version=cache_schema_version,
+                data={"n": n, "honest_reports": honest_reports, "results": results},
+            )
     else:
         honest_reports = cached["honest_reports"]
         results = cached["results"]

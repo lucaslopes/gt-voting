@@ -103,6 +103,15 @@ identity, and the output reports which backend ran. This avoids serving a
 Python result for a Rust request (or the reverse) while preserving the existing
 Python-default cache identity.
 
+An explicit Rust run checks that the extension loads before reading the cache.
+The compiled binary's SHA-256 is part of the cache key. A binary that cannot be
+fingerprinted can still run, with caching disabled for that run.
+
+Set `GTIV_CACHE_DIR` to choose where CLI commands store their caches. A source
+checkout defaults to its `data/` directory. Installed packages use the current
+user's cache directory, so CLI commands also work when Python packages are
+installed read-only for multiple users.
+
 The lower-level `IterativeVotingSystem` class also accepts the options when a
 caller drives the loop one step at a time:
 

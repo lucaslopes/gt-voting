@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,14 +34,15 @@ HONEST_REPORTS_CACHE_SCHEMA_VERSION = 1
 RANKINGS_CACHE_SCHEMA_VERSION = 1
 
 
-def _find_repo_root(start: Optional[Path] = None) -> Path:
-    """Best-effort repository root detection.
-
-    We walk upwards from ``start`` looking for either ``pyproject.toml`` or
-    ``.git``. If neither is found we fall back to ``start.parent``.
-    """
+def _find_repo_root(start: Optional[Path] = None) -> Optional[Path]:
+    """Find a source root for cache placement and Git provenance."""
     if start is None:
-        start = Path(__file__).resolve()
+        # Installed packages can sit inside a virtual environment in an
+        # unrelated checkout. Only the parent of the source package counts.
+        source_root = Path(__file__).resolve().parent.parent
+        if (source_root / "pyproject.toml").exists() or (source_root / ".git").exists():
+            return source_root
+        return None
 
     for parent in (start,) + tuple(start.parents):
         if (parent / "pyproject.toml").exists() or (parent / ".git").exists():
@@ -49,13 +51,25 @@ def _find_repo_root(start: Optional[Path] = None) -> Path:
     return start.parent
 
 
-def get_command_cache_dir(command: str, root: Optional[Path] = None) -> Path:
-    """Return the base cache directory for a CLI command.
+def _user_cache_dir() -> Path:
+    if os.name == "nt":
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        base = Path(local_app_data) if local_app_data else Path.home() / "AppData" / "Local"
+        return base / "gtiv" / "Cache"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "gtiv"
+    xdg_cache = Path(os.environ.get("XDG_CACHE_HOME", ""))
+    base = xdg_cache if xdg_cache.is_absolute() else Path.home() / ".cache"
+    return base / "gtiv"
 
-    We use the convention: ``data/{command}_runs/``.
-    """
+
+def get_command_cache_dir(command: str, root: Optional[Path] = None) -> Path:
+    """Return a cache below the explicit root, environment override, or default."""
+    if root is None and (override := os.environ.get("GTIV_CACHE_DIR")):
+        return Path(override).expanduser().resolve() / f"{command}_runs"
     repo_root = _find_repo_root(root)
-    return repo_root / "data" / f"{command}_runs"
+    base = repo_root / "data" if repo_root is not None else _user_cache_dir()
+    return base / f"{command}_runs"
 
 
 def get_dashboard_cache_dir(root: Optional[Path] = None) -> Path:
@@ -224,10 +238,6 @@ def save_cached_run(
     Returns (run_dir, data_path).
     """
     repo_root = _find_repo_root(root)
-    # Use the same root input as get_run_path() so root discovery happens only
-    # once. In an installed wheel, discovery can fall back to ``core``; passing
-    # that result back through discovery would normalize it to ``site-packages``
-    # and write to a different path than the CLI reports and later loads.
     run_dir = get_run_path(command=command, params=params, prefix_parts=prefix_parts, root=root)
     os.makedirs(run_dir, exist_ok=True)
 
@@ -241,7 +251,7 @@ def save_cached_run(
         "params": params,
     }
 
-    git_commit = _get_git_commit(repo_root)
+    git_commit = _get_git_commit(repo_root) if repo_root is not None else None
     if git_commit is not None:
         metadata["git_commit"] = git_commit
 
