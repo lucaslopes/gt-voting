@@ -10,6 +10,7 @@ import importlib
 import importlib.metadata
 import platform
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -41,6 +42,14 @@ def _native():
     ):
         raise BackendUnavailableError("gtiv_native has an incompatible interface")
     return module
+
+
+def require_native_backend():
+    """Return the compatible optional native module or fail before any work starts."""
+    native = _native()
+    if native is None:
+        raise BackendUnavailableError("gtiv_native is not installed")
+    return native
 
 
 def _profile(ballots):
@@ -80,6 +89,24 @@ def _selector(value):
         ) from exc
 
 
+def validate_backend_options(backend, selector):
+    """Validate and normalize a backend/selector pair without loading Rust."""
+    selector = _selector(selector)
+    if backend not in {"python", "rust", "auto"}:
+        raise ValueError("backend must be 'python', 'rust', or 'auto'")
+    if backend in {"python", "auto"} and selector != "lp":
+        raise BackendUnavailableError(
+            f"the {backend} backend currently supports selector='lp' only"
+        )
+    if backend == "rust" and selector == "lp":
+        raise BackendUnavailableError(
+            "Rust does not implement the Python HiGHS 'lp' selector; "
+            "request 'vertex' or 'minimum_norm' explicitly"
+        )
+    return selector
+
+
+@lru_cache(maxsize=1)
 def _version():
     try:
         return importlib.metadata.version("gtiv")
@@ -87,12 +114,22 @@ def _version():
         return None
 
 
+@lru_cache(maxsize=8)
+def _file_sha256(path, mtime_ns, ctime_ns, size):
+    """Hash a native binary once per observed file revision."""
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
 def _native_sha256(module):
     filename = getattr(module, "__file__", None) if module is not None else None
     if not filename:
         return None
     try:
-        return hashlib.sha256(Path(filename).resolve(strict=True).read_bytes()).hexdigest()
+        path = Path(filename).resolve(strict=True)
+        stat = path.stat()
+        return _file_sha256(
+            str(path), stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size
+        )
     except OSError:
         return None
 
@@ -169,37 +206,22 @@ def aggregate_rankings(
     gate is complete.
     """
     rows, candidates, encoded = _profile(ballots)
-    selector = _selector(selector)
-    if backend not in {"python", "rust", "auto"}:
-        raise ValueError("backend must be 'python', 'rust', or 'auto'")
+    selector = validate_backend_options(backend, selector)
 
     native = None
     fallback = None
     if backend == "python":
-        if selector != "lp":
-            raise BackendUnavailableError("the Python backend supports selector='lp'")
         used = "python"
     elif backend == "auto":
-        if selector != "lp":
-            raise BackendUnavailableError(
-                "automatic dispatch currently supports selector='lp' only"
-            )
         used, fallback = "python", _AUTO_DISABLED_REASON
     else:
         if mechanism != "GT":
             raise BackendUnavailableError("the Rust backend currently supports mechanism='GT' only")
-        if selector == "lp":
-            raise BackendUnavailableError(
-                "Rust does not implement the Python HiGHS 'lp' selector; "
-                "request 'vertex' or 'minimum_norm' explicitly"
-            )
         if len(candidates) > _RUST_MAX_CANDIDATES:
             raise BackendUnavailableError(
                 f"Rust aggregation supports at most {_RUST_MAX_CANDIDATES} candidates"
             )
-        native = _native()
-        if native is None:
-            raise BackendUnavailableError("gtiv_native is not installed")
+        native = require_native_backend()
         used = "rust"
 
     if used == "python":
@@ -235,4 +257,6 @@ __all__ = [
     "BackendUnavailableError",
     "aggregate_rankings",
     "backend_capabilities",
+    "require_native_backend",
+    "validate_backend_options",
 ]

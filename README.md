@@ -19,7 +19,9 @@ This project is licensed under the GNU General Public License v3 or later; see `
 The optional Rust GT aggregation backend, its Python API, sampled simulation
 integration, and `gtiv aggregate` command are documented in
 [`docs/guides/RUST_BACKEND.md`](docs/guides/RUST_BACKEND.md). Python/SciPy
-remains the default; Rust dispatch is explicit.
+remains the default; Rust dispatch is explicit. The existing
+`strategic-reports` command can opt in with `--aggregation-backend rust` and an
+explicit Rust selector.
 
 ## CLI Usage
 

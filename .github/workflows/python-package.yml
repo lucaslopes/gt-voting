@@ -110,6 +110,14 @@ jobs:
           assert result["metadata"]["native_api_version"] == 1
           assert len(result["metadata"]["native_binary_sha256"]) == 64
           PY
+      - name: Check strategic-report backend options when integration tests exist
+        if: hashFiles('tests/test_strategic_reports_backend.py') != ''
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          gtiv strategic-reports --help > strategic-reports-help.txt
+          grep -q -- '--aggregation-backend' strategic-reports-help.txt
+          grep -q -- '--aggregation-selector' strategic-reports-help.txt
       - name: Test Python APIs and CLIs when tests are present
         if: hashFiles('tests/**/*.py') != ''
         run: python -m unittest discover -s tests -v

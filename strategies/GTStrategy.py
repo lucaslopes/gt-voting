@@ -241,9 +241,36 @@ class GTStrategy(BaseStrategy):
         Raises:
             ValueError: If honest_reports is empty, T < 1, m < 1, or other validation fails
         """
+        aggregation_backend = kwargs.pop("aggregation_backend", "python")
+        aggregation_selector = kwargs.pop("aggregation_selector", "lp")
+        from core.backends import validate_backend_options
+
+        aggregation_selector = validate_backend_options(
+            aggregation_backend, aggregation_selector
+        )
+        if self.use_expected_score and aggregation_backend == "rust":
+            from core.backends import BackendUnavailableError
+
+            raise BackendUnavailableError(
+                "Rust aggregation supports sampled rankings only; "
+                "use_expected_score must be False"
+            )
+        if self.use_expected_score and aggregation_selector != "lp":
+            from core.backends import BackendUnavailableError
+
+            raise BackendUnavailableError(
+                "expected-score dynamics use the Python margin-matrix solver "
+                "and support selector='lp' only"
+            )
+
         # Validate parameters
         self.validate_parameters(T, m, **kwargs)
         n, candidates = self.validate_honest_reports(honest_reports, m)
+
+        if aggregation_backend == "rust":
+            from core.backends import require_native_backend
+
+            require_native_backend()
         
         # Initialize RNG
         rng = spawn_rng(seed, rng)
@@ -280,6 +307,21 @@ class GTStrategy(BaseStrategy):
         p_history = []
         p_avg_history = []
         p_sum = np.zeros(m, dtype=float)  # Accumulator for time-averaging
+        aggregation_metadata = None
+
+        if self.use_expected_score and aggregation_backend == "auto":
+            from core.backends import _metadata
+
+            aggregation_metadata = _metadata(
+                aggregation_backend,
+                "python",
+                "lp",
+                None,
+                "expected-score dynamics use the existing Python margin-matrix solver",
+                mechanism="GT",
+                candidate_count=m,
+                voter_count=n,
+            )
         
         # Track payoffs history: payoffs_history[t-1] = payoffs dict at time t (for t=1..T)
         payoffs_history = []
@@ -302,8 +344,21 @@ class GTStrategy(BaseStrategy):
                 current_rankings = self._sample_rankings_from_distribution(
                     x, all_rankings, rng
                 )
-                # Aggregate using GT mechanism to get p_t
-                p_t = np.array(aggregate_rankings(current_rankings, mechanism="GT"))
+                if aggregation_backend == "python" and aggregation_selector == "lp":
+                    # Preserve the historical path for all existing callers.
+                    p_t = np.array(aggregate_rankings(current_rankings, mechanism="GT"))
+                else:
+                    from core.backends import aggregate_rankings as aggregate_with_backend
+
+                    aggregate_result = aggregate_with_backend(
+                        current_rankings,
+                        mechanism="GT",
+                        backend=aggregation_backend,
+                        selector=aggregation_selector,
+                    )
+                    p_t = np.array(aggregate_result["probabilities"])
+                    if aggregation_metadata is None:
+                        aggregation_metadata = aggregate_result["metadata"]
             
             # Store instantaneous outcome p^t
             p_history.append(p_t.copy())
@@ -347,13 +402,16 @@ class GTStrategy(BaseStrategy):
             # Record the probability assigned to the selected (most likely) ranking
             selected_probs[:, t] = x[np.arange(n), most_likely_indices]
         
-        return {
+        result = {
             "reports": reports,
             "selected_probs": selected_probs,
             "p_history": np.array(p_history),  # Shape [T, m]
             "p_avg_history": np.array(p_avg_history),  # Shape [T, m]
             "payoffs_history": payoffs_history,  # List of T dicts, each mapping (u, v) -> payoff
         }
+        if aggregation_backend != "python" or aggregation_selector != "lp":
+            result["aggregation_metadata"] = aggregation_metadata
+        return result
     
     def _compute_rank_vectors(self, m, all_rankings):
         """

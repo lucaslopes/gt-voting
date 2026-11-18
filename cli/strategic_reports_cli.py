@@ -3,6 +3,7 @@ import numpy as np
 from core.honest_reports import generate_honest_reports, parse_baselines, format_rankings_readable
 from core.rankings_core import generate_rankings, candidate_labels
 from core.strategic_reports import generate_strategic_reports
+from core.backends import BackendUnavailableError, validate_backend_options
 from core.graph_utils import parse_edge_list
 from core.cache_utils import (
     normalize_baselines_str,
@@ -166,6 +167,18 @@ Examples:
              "Default: False (uses sampled rankings)"
     )
     parser.add_argument(
+        "--aggregation-backend",
+        choices=("python", "rust", "auto"),
+        default="python",
+        help="Backend for sampled GT aggregation (default: python; auto currently stays on Python)",
+    )
+    parser.add_argument(
+        "--aggregation-selector",
+        choices=("lp", "vertex", "minimum_norm", "minimum-norm", "qp-balanced"),
+        default="lp",
+        help="Solver selector; Rust requires vertex or minimum_norm",
+    )
+    parser.add_argument(
         "--distance-metric",
         type=str,
         default="spearman",
@@ -220,6 +233,13 @@ Examples:
     )
     
     args = parser.parse_args(args)
+
+    try:
+        args.aggregation_selector = validate_backend_options(
+            args.aggregation_backend, args.aggregation_selector
+        )
+    except (BackendUnavailableError, ValueError) as exc:
+        parser.error(str(exc))
     
     # Validate arguments
     if args.m < 1:
@@ -249,6 +269,17 @@ Examples:
             parser.error("Anchor strength parameter must be between 0 and 1")
     else:
         parser.error(f"Unknown strategy: {args.strategy}. Available: gt_strategy, similarity_strategy")
+
+    if args.strategy != "gt_strategy" and (
+        args.aggregation_backend != "python" or args.aggregation_selector != "lp"
+    ):
+        parser.error("aggregation backend options are supported only with gt_strategy")
+    if args.use_expected_score and args.aggregation_backend == "rust":
+        parser.error("the Rust backend requires sampled rankings; remove --use-expected-score")
+    if args.use_expected_score and args.aggregation_selector != "lp":
+        parser.error("expected-score mode supports --aggregation-selector lp only")
+    if args.aggregation_backend == "rust" and args.m > 8:
+        parser.error("the Rust backend supports at most 8 candidates")
     
     # Parse baselines if provided, otherwise use defaults
     if args.baselines:
@@ -302,6 +333,12 @@ Examples:
         f"lr{args.learning_rate}",
         f"sh{args.sharpness}",
     ]
+    if args.aggregation_backend != "python" or args.aggregation_selector != "lp":
+        cache_params["aggregation_backend"] = args.aggregation_backend
+        cache_params["aggregation_selector"] = args.aggregation_selector
+        cache_prefix_parts.extend(
+            [f"backend-{args.aggregation_backend}", f"selector-{args.aggregation_selector}"]
+        )
     if args.baselines:
         cache_prefix_parts.append("baselines")
     if args.graph:
@@ -355,9 +392,11 @@ Examples:
                 # SimilarityStrategy parameters
                 distance_metric=args.distance_metric,
                 # Graph topology
-                graph=graph
+                graph=graph,
+                aggregation_backend=args.aggregation_backend,
+                aggregation_selector=args.aggregation_selector,
             )
-        except ValueError as e:
+        except (BackendUnavailableError, ValueError) as e:
             parser.error(str(e))
 
         save_cached_run(
@@ -370,6 +409,16 @@ Examples:
     else:
         honest_reports = cached["honest_reports"]
         results = cached["results"]
+
+    aggregation_metadata = results.get("aggregation_metadata")
+    if aggregation_metadata is not None:
+        print(
+            "Aggregation backend: "
+            f"{aggregation_metadata['backend_used']} "
+            f"(requested {aggregation_metadata['backend_requested']})"
+        )
+        if aggregation_metadata.get("fallback_reason"):
+            print(f"  Fallback: {aggregation_metadata['fallback_reason']}")
 
     # Unpack standardized results dict
     strategies_full = results["reports"]

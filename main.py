@@ -229,6 +229,18 @@ def main():
         help="Alias for --sharpness (deprecated, use --sharpness instead)"
     )
     strategic_reports_parser.add_argument(
+        "--aggregation-backend",
+        choices=("python", "rust", "auto"),
+        default="python",
+        help="Backend for sampled GT aggregation (default: python; auto currently stays on Python)",
+    )
+    strategic_reports_parser.add_argument(
+        "--aggregation-selector",
+        choices=("lp", "vertex", "minimum_norm", "minimum-norm", "qp-balanced"),
+        default="lp",
+        help="Solver selector; Rust requires vertex or minimum_norm",
+    )
+    strategic_reports_parser.add_argument(
         "--distance-metric",
         type=str,
         default="spearman",
@@ -816,6 +828,8 @@ def main():
         strategic_reports_args.extend(['--learning-rate', str(args.learning_rate)])
         strategic_reports_args.extend(['--sharpness', str(args.sharpness)])
         strategic_reports_args.extend(['--distance-metric', args.distance_metric])
+        strategic_reports_args.extend(['--aggregation-backend', args.aggregation_backend])
+        strategic_reports_args.extend(['--aggregation-selector', args.aggregation_selector])
         if args.alphabetical:
             strategic_reports_args.append('--alphabetical')
         if args.plot:

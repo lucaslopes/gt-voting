@@ -34,20 +34,24 @@ class IterativeVotingSystem:
             aggregation_selector: Solver selector. ``lp`` preserves the Python
                 default; Rust requires ``vertex`` or ``minimum_norm`` explicitly.
         """
-        if aggregation_backend not in {"python", "rust", "auto"}:
-            raise ValueError("aggregation_backend must be 'python', 'rust', or 'auto'")
-        if aggregation_selector not in {
-            "lp", "vertex", "minimum_norm", "minimum-norm", "qp-balanced"
-        }:
-            raise ValueError(
-                "aggregation_selector must be 'lp', 'vertex', or 'minimum_norm'"
-            )
+        from core.backends import validate_backend_options
+
+        aggregation_selector = validate_backend_options(
+            aggregation_backend, aggregation_selector
+        )
         if use_expected_score and aggregation_backend == "rust":
             from core.backends import BackendUnavailableError
 
             raise BackendUnavailableError(
                 "Rust aggregation supports sampled rankings only; "
                 "use_expected_score must be False"
+            )
+        if use_expected_score and aggregation_selector != "lp":
+            from core.backends import BackendUnavailableError
+
+            raise BackendUnavailableError(
+                "expected-score dynamics use the Python margin-matrix solver "
+                "and support aggregation_selector='lp' only"
             )
         self.m = m
         self.n = n
@@ -60,6 +64,7 @@ class IterativeVotingSystem:
         self.mechanism = mechanism
         self.aggregation_backend = aggregation_backend
         self.aggregation_selector = aggregation_selector
+        self.last_aggregation_metadata = None
         
         # Create or use provided strategy instance
         # Strategy defines the sampling/aggregation logic (e.g., Algorithm 1 line 3)
@@ -254,23 +259,54 @@ class IterativeVotingSystem:
             # Expected-score variant: use expected margin matrix (deterministic)
             M = self.get_margin_matrix_from_probs()
             p_t = self.solve_gt_game(M)
+            if self.aggregation_backend == "auto":
+                from core.backends import _metadata
+
+                self.last_aggregation_metadata = _metadata(
+                    "auto",
+                    "python",
+                    "lp",
+                    None,
+                    "expected-score dynamics use the existing Python margin-matrix solver",
+                    mechanism=self.mechanism,
+                    candidate_count=self.m,
+                    voter_count=self.n,
+                )
+            else:
+                self.last_aggregation_metadata = None
         else:
             # Sampled variant: delegate to GTStrategy._sample_rankings_from_distribution
             # This ensures Algorithm 1 line 3 logic is defined in GTStrategy, not here
+            if self.aggregation_backend == "rust":
+                from core.backends import require_native_backend
+
+                require_native_backend()
             sampled_rankings = self.strategy._sample_rankings_from_distribution(
                 self.x, self.perms, self.rng
             )
             # Aggregate using the specified mechanism (default: GT)
             # The mechanism defines how rankings are aggregated into outcomes
-            from core.aggregator_core import aggregate_rankings
-            p_t = np.array(
-                aggregate_rankings(
+            if (
+                self.aggregation_backend == "python"
+                and self.aggregation_selector == "lp"
+            ):
+                from core.aggregator_core import aggregate_rankings
+
+                p_t = np.array(
+                    aggregate_rankings(sampled_rankings, mechanism=self.mechanism)
+                )
+                self.last_aggregation_metadata = None
+            else:
+                from core.backends import aggregate_rankings as aggregate_with_backend
+
+                aggregate_result = aggregate_with_backend(
                     sampled_rankings,
                     mechanism=self.mechanism,
                     backend=self.aggregation_backend,
                     selector=self.aggregation_selector,
                 )
-            )
+                p_t = np.array(aggregate_result["probabilities"])
+                self.last_aggregation_metadata = aggregate_result["metadata"]
         
         p_tilde = p_t - (1.0 / self.m)
         
