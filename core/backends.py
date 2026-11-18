@@ -9,8 +9,8 @@ import hashlib
 import importlib
 import importlib.metadata
 import platform
-import sys
 from functools import lru_cache
+from importlib.machinery import EXTENSION_SUFFIXES
 from pathlib import Path
 
 import numpy as np
@@ -21,6 +21,7 @@ class BackendUnavailableError(RuntimeError):
 
 
 _RUST_MAX_CANDIDATES = 8
+_NATIVE_EXTENSION_SUFFIXES = tuple(EXTENSION_SUFFIXES)
 _AUTO_DISABLED_REASON = (
     "automatic native dispatch is disabled until parity and performance are "
     "validated against the public main-branch Python implementation"
@@ -131,8 +132,14 @@ def _file_sha256(path, mtime_ns, ctime_ns, size):
 
 
 def _native_sha256(module):
-    filename = getattr(module, "__file__", None) if module is not None else None
-    if not filename:
+    if module is None:
+        return None
+    filename = getattr(module, "__file__", None)
+    if not filename or not filename.endswith(_NATIVE_EXTENSION_SUFFIXES):
+        extension_name = getattr(module, "__name__", "").rsplit(".", 1)[-1]
+        extension = getattr(module, extension_name, None)
+        filename = getattr(extension, "__file__", None)
+    if not filename or not filename.endswith(_NATIVE_EXTENSION_SUFFIXES):
         return None
     try:
         path = Path(filename).resolve(strict=True)
