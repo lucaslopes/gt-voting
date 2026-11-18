@@ -1,9 +1,13 @@
+import hashlib
 import io
 import importlib.util
+import os
+import pickle
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
+from importlib.machinery import EXTENSION_SUFFIXES
 from pathlib import Path
 from unittest.mock import patch
 
@@ -114,6 +118,9 @@ class StrategicReportsBackendTests(unittest.TestCase):
         native = _FakeNative()
         output = io.StringIO()
         with tempfile.TemporaryDirectory(prefix="gtiv-cli-cache-") as temp_dir:
+            binary = Path(temp_dir) / f"gtiv_native{EXTENSION_SUFFIXES[0]}"
+            binary.write_bytes(b"test binary")
+            native.__file__ = str(binary)
             with (
                 patch("core.backends._native", return_value=native),
                 patch.object(
@@ -150,8 +157,80 @@ class StrategicReportsBackendTests(unittest.TestCase):
         params = save_cache.call_args.kwargs["params"]
         self.assertEqual(params["aggregation_backend"], "rust")
         self.assertEqual(params["aggregation_selector"], "vertex")
+        self.assertEqual(params["native_binary_sha256"], hashlib.sha256(b"test binary").hexdigest())
         self.assertEqual(len(native.calls), 1)
         self.assertIn("Aggregation backend: rust (requested rust)", output.getvalue())
+
+    def test_rust_cache_requires_the_same_available_binary(self):
+        from cli import strategic_reports_cli
+
+        native = _FakeNative()
+        arguments = [
+            "--m", "2", "--baselines", "0*2", "--T", "2",
+            "--aggregation-backend", "rust", "--aggregation-selector", "vertex",
+        ]
+        with tempfile.TemporaryDirectory(prefix="gtiv-rust-cache-") as temp_dir:
+            directory = Path(temp_dir)
+            binary = directory / f"gtiv_native{EXTENSION_SUFFIXES[0]}"
+            native.__file__ = str(binary)
+            binary.write_bytes(b"first binary")
+            cache_dir = directory / "cache"
+            with patch.dict(os.environ, {"GTIV_CACHE_DIR": str(cache_dir)}):
+                with patch("core.backends._native", return_value=native):
+                    with redirect_stdout(io.StringIO()) as output:
+                        strategic_reports_cli.main(arguments)
+                        strategic_reports_cli.main(arguments)
+                    self.assertIn("[cache] strategic_reports hit:", output.getvalue())
+                    self.assertEqual(len(native.calls), 1)
+
+                    cache_files = list(cache_dir.glob("strategic_reports_runs/*/data.pkl"))
+                    self.assertEqual(len(cache_files), 1)
+                    with cache_files[0].open("rb") as stream:
+                        payload = pickle.load(stream)
+                    payload["results"]["aggregation_metadata"]["native_binary_sha256"] = "0" * 64
+                    with cache_files[0].open("wb") as stream:
+                        pickle.dump(payload, stream)
+                    with redirect_stdout(io.StringIO()) as output:
+                        strategic_reports_cli.main(arguments)
+                    self.assertIn("[cache] strategic_reports miss:", output.getvalue())
+                    self.assertEqual(len(native.calls), 2)
+
+                    binary.write_bytes(b"a different binary")
+                    with redirect_stdout(io.StringIO()) as output:
+                        strategic_reports_cli.main(arguments)
+                    self.assertIn("[cache] strategic_reports miss:", output.getvalue())
+                    self.assertEqual(len(native.calls), 3)
+                    self.assertEqual(len(list(cache_dir.glob("strategic_reports_runs/*/data.pkl"))), 2)
+
+                with (
+                    patch("core.backends._native", return_value=None),
+                    patch.object(strategic_reports_cli, "load_cached_run") as load,
+                    redirect_stderr(io.StringIO()) as output,
+                    self.assertRaises(SystemExit) as raised,
+                ):
+                    strategic_reports_cli.main(arguments)
+                self.assertEqual(raised.exception.code, 2)
+                self.assertIn("gtiv_native is not installed", output.getvalue())
+                load.assert_not_called()
+
+    def test_unfingerprintable_rust_runs_without_cache(self):
+        from cli import strategic_reports_cli
+
+        native = _FakeNative()
+        with (
+            patch("core.backends._native", return_value=native),
+            patch.object(strategic_reports_cli, "load_cached_run") as load,
+            patch.object(strategic_reports_cli, "save_cached_run") as save,
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            strategic_reports_cli.main([
+                "--m", "2", "--baselines", "0*2", "--T", "2",
+                "--aggregation-backend", "rust", "--aggregation-selector", "vertex",
+            ])
+        self.assertEqual(len(native.calls), 1)
+        self.assertIn("the Rust binary could not be fingerprinted", output.getvalue())
+        load.assert_not_called()
+        save.assert_not_called()
 
 
 if __name__ == "__main__":

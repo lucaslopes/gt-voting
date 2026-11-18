@@ -13,6 +13,8 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,14 +35,15 @@ HONEST_REPORTS_CACHE_SCHEMA_VERSION = 1
 RANKINGS_CACHE_SCHEMA_VERSION = 1
 
 
-def _find_repo_root(start: Optional[Path] = None) -> Path:
-    """Best-effort repository root detection.
-
-    We walk upwards from ``start`` looking for either ``pyproject.toml`` or
-    ``.git``. If neither is found we fall back to ``start.parent``.
-    """
+def _find_repo_root(start: Optional[Path] = None) -> Optional[Path]:
+    """Find a source root for cache placement and Git provenance."""
     if start is None:
-        start = Path(__file__).resolve()
+        # Installed packages can sit inside a virtual environment in an
+        # unrelated checkout. Only the parent of the source package counts.
+        source_root = Path(__file__).resolve().parent.parent
+        if (source_root / "pyproject.toml").exists() or (source_root / ".git").exists():
+            return source_root
+        return None
 
     for parent in (start,) + tuple(start.parents):
         if (parent / "pyproject.toml").exists() or (parent / ".git").exists():
@@ -49,13 +52,25 @@ def _find_repo_root(start: Optional[Path] = None) -> Path:
     return start.parent
 
 
-def get_command_cache_dir(command: str, root: Optional[Path] = None) -> Path:
-    """Return the base cache directory for a CLI command.
+def _user_cache_dir() -> Path:
+    if os.name == "nt":
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        base = Path(local_app_data) if local_app_data else Path.home() / "AppData" / "Local"
+        return base / "gtiv" / "Cache"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "gtiv"
+    xdg_cache = Path(os.environ.get("XDG_CACHE_HOME", ""))
+    base = xdg_cache if xdg_cache.is_absolute() else Path.home() / ".cache"
+    return base / "gtiv"
 
-    We use the convention: ``data/{command}_runs/``.
-    """
+
+def get_command_cache_dir(command: str, root: Optional[Path] = None) -> Path:
+    """Return a cache below the explicit root, environment override, or default."""
+    if root is None and (override := os.environ.get("GTIV_CACHE_DIR")):
+        return Path(override).expanduser().resolve() / f"{command}_runs"
     repo_root = _find_repo_root(root)
-    return repo_root / "data" / f"{command}_runs"
+    base = repo_root / "data" if repo_root is not None else _user_cache_dir()
+    return base / f"{command}_runs"
 
 
 def get_dashboard_cache_dir(root: Optional[Path] = None) -> Path:
@@ -199,11 +214,18 @@ def load_cached_run(
     if not meta_path.exists() or not data_path.exists():
         return None, None
     try:
-        with meta_path.open("r", encoding="utf-8") as f:
-            metadata = json.load(f)
+        metadata_bytes = meta_path.read_bytes()
+        metadata = json.loads(metadata_bytes)
         if metadata.get("schema_version") != schema_version:
             return None, None
         with data_path.open("rb") as f:
+            if "data_sha256" in metadata:
+                if hashlib.file_digest(f, "sha256").hexdigest() != metadata["data_sha256"]:
+                    return None, None
+                f.seek(0)
+            elif meta_path.read_bytes() != metadata_bytes:
+                # A newer writer can replace legacy metadata before publishing data.
+                return None, None
             data = pickle.load(f)
         return data, metadata
     except Exception:
@@ -224,7 +246,7 @@ def save_cached_run(
     Returns (run_dir, data_path).
     """
     repo_root = _find_repo_root(root)
-    run_dir = get_run_path(command=command, params=params, prefix_parts=prefix_parts, root=repo_root)
+    run_dir = get_run_path(command=command, params=params, prefix_parts=prefix_parts, root=root)
     os.makedirs(run_dir, exist_ok=True)
 
     meta_path = run_dir / "metadata.json"
@@ -237,15 +259,24 @@ def save_cached_run(
         "params": params,
     }
 
-    git_commit = _get_git_commit(repo_root)
+    git_commit = _get_git_commit(repo_root) if repo_root is not None else None
     if git_commit is not None:
         metadata["git_commit"] = git_commit
 
-    with data_path.open("wb") as f:
-        pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+    with tempfile.TemporaryDirectory(prefix=".pending-", dir=run_dir) as staging:
+        staged_data = Path(staging) / data_path.name
+        staged_metadata = Path(staging) / meta_path.name
+        with staged_data.open("w+b") as f:
+            pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+            f.seek(0)
+            metadata["data_sha256"] = hashlib.file_digest(f, "sha256").hexdigest()
+        with staged_metadata.open("w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2, sort_keys=True)
 
-    with meta_path.open("w", encoding="utf-8") as f:
-        json.dump(metadata, f, indent=2, sort_keys=True)
+        # Publish the digest before the data so a reader using legacy metadata
+        # cannot accept newly published data as an unsigned entry.
+        staged_metadata.replace(meta_path)
+        staged_data.replace(data_path)
 
     return run_dir, data_path
 
