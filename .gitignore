@@ -11,8 +11,8 @@ wheels/
 
 # MacOS
 .DS_Store
+.cursor/debug.log
 
 # Project-specific files
-docs/*
 images/*
 data/*

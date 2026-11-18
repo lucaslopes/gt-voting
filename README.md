@@ -1,19 +1,18 @@
-# GT Voting System
+# Game-Theoretic Iterative Voting
 
-A Python toolkit for generating and analyzing candidate rankings in voting systems, with support for honest reports generation, strategic voting simulation, and visualization.
+`gtiv` studies **Repeated Maximal Lotteries**: in iterative simulations using the GT mechanism, reported rankings are aggregated into a maximal lottery each round, and strategies can update reports before the next round. The toolkit also includes other aggregation mechanisms for comparison, and it visualizes how outcomes evolve.
+
+The project takes theoretical inspiration from Ronald L. Rivest and Emily Shen. Their paper, [“An Optimal Single-Winner Preferential Voting System Based on Game Theory”](https://people.csail.mit.edu/rivest/pubs/RS10.conference.pdf), calls their single-round rule the “GT method” and describes it as a special case of maximal-lottery methods, using pairwise vote margins. In `gtiv`, the iterative research question is what happens when maximal-lottery aggregation is applied repeatedly as reports change across rounds. **“Repeated Maximal Lotteries” is our description of that iterative study, not Rivest and Shen's name for their original rule.** See [Project name and terminology](docs/PROJECT_IDENTITY.md) for details.
 
 ## Installation
 
-This project uses `uv` for dependency management. Install dependencies with:
+For development from a source checkout, install the project and its dependencies with:
 
 ```bash
 python -m pip install -e .
-# or
-uv pip install -e .
 ```
 
-The installed `gtiv` command launches the same Python CLI as `python main.py`.
-The distribution name remains `gt-voting` in this release line.
+The Python distribution and its only installed command are both named `gtiv`. The command launches the same CLI as `python main.py`.
 
 This project is licensed under the GNU General Public License v3 or later; see `LICENSE`.
 
@@ -335,7 +334,7 @@ The `proportions` command operates in two modes:
 
 The `--mechanism` parameter selects how to aggregate rankings into probabilities. Available mechanisms:
 
-- **GT** (default in `aggregate_rankings`): GT (Game Theory) voting system - models the election as a zero-sum game and finds the optimal mixed strategy using linear programming. Implements the Rivest-Shen GT voting system.
+- **GT** (default in `aggregate_rankings`): the GT method models the election as a zero-sum game and finds an optimal mixed strategy using linear programming. It is the margin-based maximal-lottery rule described by Rivest and Shen.
   - Computes a margin matrix M where M[i,j] = (votes i > j) - (votes j > i) for all pairwise comparisons
   - Uses the standard zero-sum game LP formulation (Theorem 2): maximizes game value v subject to M^T p >= v * 1, sum(p) = 1
   - Returns probabilities that represent the optimal mixed strategy (Nash equilibrium), ensuring no candidate can be exploited
@@ -728,38 +727,26 @@ Payoffs are computed once per time step during strategy generation and stored ef
 ## Project Structure
 
 ```
-gt-voting/
-├── main.py                # Unified CLI entry point
-├── cli/                   # CLI modules
-│   ├── rankings_cli.py   # Rankings command
-│   ├── honest_reports_cli.py  # Honest reports command
-│   ├── strategic_reports_cli.py  # Strategic reports command
-│   ├── proportions_cli.py  # Proportions plot command
-│   └── ternary_cli.py     # Ternary trajectory plot command
-├── core/                  # Core functionality
-│   ├── rankings_core.py  # Ranking generation
-│   ├── honest_reports.py # Honest reports generation
-│   ├── strategic_reports.py  # Strategic reports generation
-│   ├── aggregator_core.py  # Ranking aggregation (probability distributions)
-│   ├── distance_metrics.py  # Distance metrics (Spearman, Kendall Tau, etc.)
-│   └── utils.py          # Shared utilities
-├── strategies/            # Voter strategies
-│   ├── __init__.py       # Strategy registry and auto-discovery
-│   ├── BaseStrategy.py   # Abstract base class for all strategies
-│   ├── GTStrategy.py     # GT (Game Theory) strategy
-│   └── SimilarityStrategy.py  # Similarity-based strategy
-├── mechanisms/            # Aggregation mechanisms
-│   ├── __init__.py       # Mechanism registry and auto-discovery
-│   ├── BaseMechanism.py  # Abstract base class for all mechanisms
-│   ├── GT.py             # GT (Game Theory) mechanism
-│   ├── PairwiseMajority.py  # Pairwise Majority Rule mechanism
-│   └── Plurality.py      # Plurality Rule mechanism
-└── plots/                 # Plotting utilities
-    ├── plot_rankings.py   # Rankings visualization
-    ├── plot_voter_strategies.py  # Strategy visualization
-    ├── plot_proportions.py  # Proportion plots (stacked area charts)
-    ├── plot_ternary.py    # Ternary trajectory plots
-    └── BasePlot.py        # Base class for all plots with shared utilities
+gtiv/
+├── .github/workflows/
+│   ├── python-package.yml  # Cross-platform package validation
+│   └── testpypi.yml        # Manual TestPyPI publishing
+├── cli/                    # CLI subcommands
+├── core/                   # Simulation, aggregation, and utilities
+├── docs/
+│   └── PROJECT_IDENTITY.md # Project name and research terminology
+├── mechanisms/             # Aggregation mechanisms
+├── plots/                  # Plotting utilities
+├── strategies/             # Voter strategies
+├── .gitignore
+├── .python-version
+├── LICENSE
+├── README.md
+├── explain_trajectories.py # Trajectory explanation helper
+├── main.py                 # Unified `gtiv` CLI entry point
+├── pyproject.toml          # Python distribution and build metadata
+├── uv.lock                 # Locked development dependencies
+└── verify_algorithm.py     # Algorithm verification helper
 ```
 
 ### Mechanism Architecture
@@ -767,7 +754,7 @@ gt-voting/
 The aggregation mechanisms are implemented as classes inheriting from `BaseMechanism`. The system automatically discovers all mechanisms in the `mechanisms/` directory:
 
 - **BaseMechanism**: Abstract base class defining the interface for all mechanisms
-- **GT**: Implements the Rivest-Shen GT (Game Theory) voting system using the standard zero-sum game LP formulation (Theorem 2) to find Nash equilibrium strategies
+- **GT**: Implements the margin-based GT method described by Rivest and Shen using a zero-sum game linear program to find a maximal lottery
 - **PairwiseMajority**: Implements Pairwise Majority Rule aggregation
 - **Plurality**: Implements Plurality Rule aggregation
 
@@ -775,13 +762,8 @@ New mechanisms can be added by creating a new class file in `mechanisms/` that i
 
 ## Development
 
-Run tests:
-```bash
-uv run -m pytest -q
-```
+The repository currently has no standalone test suite. The `Python package` GitHub Actions workflow builds the wheel and source distribution, installs each artifact, and checks `gtiv --help` on Linux, macOS, and Windows. To run the CLI help locally from a source checkout:
 
-Format code:
 ```bash
-uv run black .
-uv run flake8 .
+python main.py --help
 ```

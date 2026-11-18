@@ -1,4 +1,4 @@
-"""Main CLI entry point for ranking tools."""
+"""Main CLI entry point for gtiv (Game-Theoretic Iterative Voting)."""
 
 import argparse
 from cli.rankings_cli import main as rankings_main
@@ -14,7 +14,7 @@ from mechanisms import list_mechanisms
 def main():
     """Unified CLI entry point with subcommands."""
     parser = argparse.ArgumentParser(
-        description="GT Voting System CLI",
+        description="gtiv: Game-Theoretic Iterative Voting CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     

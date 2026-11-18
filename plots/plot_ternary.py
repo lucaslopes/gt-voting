@@ -328,9 +328,9 @@ class TernaryPlot(BasePlot):
         # Add overall suptitle
         if title is None:
             if n_plots == 1:
-                title = "Dynamics of GT Voting Outcome:\nInstantaneous vs Running Average"
+                title = "Dynamics of the GT Outcome:\nInstantaneous vs Running Average"
             else:
-                title = "Dynamics of GT Voting Outcome:\nInstantaneous vs Running Average"
+                title = "Dynamics of the GT Outcome:\nInstantaneous vs Running Average"
         plt.suptitle(title, fontsize=self.PLOT_TITLE_FONTSIZE)
         plt.tight_layout()
         

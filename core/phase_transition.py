@@ -1,6 +1,7 @@
 """Phase transition experiment functions for analyzing anchoring parameter effects."""
 
 import numpy as np
+from core.debug_log import open_debug_log
 from core.utils import spawn_rng
 from core.voting_system import IterativeVotingSystem
 
@@ -166,7 +167,7 @@ def run_phase_transition(n=15, m=3, alpha_grid=None, eta=0.2, beta=3.0, seed=0, 
                 run_rng = np.random.default_rng(run_seed)
                 
                 # #region agent log
-                with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                with open_debug_log() as f:
                     baselines_list = list(baselines) if baselines is not None else None
                     f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"phase_transition.py:166","message":"Run start","data":{{"alpha":{a},"run_idx":{run_idx},"run_seed":{run_seed},"baselines_provided":{baselines is not None},"baselines":{baselines_list}}}}}\n')
                 # #endregion
@@ -175,7 +176,7 @@ def run_phase_transition(n=15, m=3, alpha_grid=None, eta=0.2, beta=3.0, seed=0, 
                 sys = IterativeVotingSystem(m=m, n=n, alpha=a, eta=eta, beta=beta, rng=run_rng, baselines=baselines)
                 
                 # #region agent log
-                with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                with open_debug_log() as f:
                     sys_baselines_list = list(sys.baselines) if hasattr(sys.baselines, '__iter__') else sys.baselines
                     x_initial = sys.x.copy()
                     x_initial_hash = hash(tuple(x_initial.flatten()))
@@ -188,7 +189,7 @@ def run_phase_transition(n=15, m=3, alpha_grid=None, eta=0.2, beta=3.0, seed=0, 
                 
                 # #region agent log
                 p_after_burnin = sys.step()  # Get one step to see state after burn-in
-                with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                with open_debug_log() as f:
                     p_after_burnin_list = list(p_after_burnin) if hasattr(p_after_burnin, '__iter__') else p_after_burnin
                     x_after_burnin = sys.x.copy()
                     x_after_burnin_hash = hash(tuple(x_after_burnin.flatten()))
@@ -203,7 +204,7 @@ def run_phase_transition(n=15, m=3, alpha_grid=None, eta=0.2, beta=3.0, seed=0, 
                     final_ps.append(p)
                     # #region agent log
                     if step_idx < 3 or step_idx == collection_steps - 2:  # Log first 3 and last
-                        with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                        with open_debug_log() as f:
                             p_list = list(p) if hasattr(p, '__iter__') else p
                             p_hash = hash(tuple(p))
                             f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"phase_transition.py:197","message":"Collection step","data":{{"alpha":{a},"run_idx":{run_idx},"step_idx":{step_idx},"p":{p_list},"p_hash":{p_hash}}}}}\n')
@@ -219,7 +220,7 @@ def run_phase_transition(n=15, m=3, alpha_grid=None, eta=0.2, beta=3.0, seed=0, 
                 p_first_last_diff = np.linalg.norm(p_first - p_last)
                 
                 # #region agent log
-                with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                with open_debug_log() as f:
                     avg_p_list = list(avg_p) if hasattr(avg_p, '__iter__') else avg_p
                     final_ps_sample_list = list(final_ps[0]) if len(final_ps) > 0 and hasattr(final_ps[0], '__iter__') else (final_ps[0] if len(final_ps) > 0 else None)
                     f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"phase_transition.py:210","message":"Run complete","data":{{"alpha":{a},"run_idx":{run_idx},"avg_p":{avg_p_list},"dist":{dist},"final_ps_sample":{final_ps_sample_list},"p_all_same":{p_all_same},"p_first_last_diff":{p_first_last_diff}}}}}\n')
@@ -234,7 +235,7 @@ def run_phase_transition(n=15, m=3, alpha_grid=None, eta=0.2, beta=3.0, seed=0, 
         dists_std = np.array([np.std(dists, ddof=1) if len(dists) > 1 else 0.0 for dists in dists_all_runs])
         
         # #region agent log
-        with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+        with open_debug_log() as f:
             for i, (a, dists) in enumerate(zip(alphas, dists_all_runs)):
                 dists_list = [float(d) for d in dists]  # Convert to list of floats for JSON
                 all_dists_identical = all(np.isclose(dists[0], d) for d in dists) if len(dists) > 0 else True
@@ -261,7 +262,7 @@ def run_phase_transition(n=15, m=3, alpha_grid=None, eta=0.2, beta=3.0, seed=0, 
                 run_rng = np.random.default_rng(run_seed)
                 
                 # #region agent log
-                with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                with open_debug_log() as f:
                     baselines_list = list(baselines) if baselines is not None else None
                     f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"phase_transition.py:235","message":"Run start (adaptive)","data":{{"alpha":{a},"run_idx":{run_idx},"run_seed":{run_seed},"baselines_provided":{baselines is not None},"baselines":{baselines_list}}}}}\n')
                 # #endregion
@@ -269,7 +270,7 @@ def run_phase_transition(n=15, m=3, alpha_grid=None, eta=0.2, beta=3.0, seed=0, 
                 sys = IterativeVotingSystem(m=m, n=n, alpha=a, eta=eta, beta=beta, rng=run_rng, baselines=baselines)
                 
                 # #region agent log
-                with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                with open_debug_log() as f:
                     sys_baselines_list = list(sys.baselines) if hasattr(sys.baselines, '__iter__') else sys.baselines
                     x_initial = sys.x.copy()
                     x_initial_hash = hash(tuple(x_initial.flatten()))
@@ -281,7 +282,7 @@ def run_phase_transition(n=15, m=3, alpha_grid=None, eta=0.2, beta=3.0, seed=0, 
                 
                 # #region agent log
                 p_after_burnin = sys.step()
-                with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                with open_debug_log() as f:
                     p_after_burnin_list = list(p_after_burnin) if hasattr(p_after_burnin, '__iter__') else p_after_burnin
                     x_after_burnin = sys.x.copy()
                     x_after_burnin_hash = hash(tuple(x_after_burnin.flatten()))
@@ -295,7 +296,7 @@ def run_phase_transition(n=15, m=3, alpha_grid=None, eta=0.2, beta=3.0, seed=0, 
                     final_ps.append(p)
                     # #region agent log
                     if step_idx < 3 or step_idx == collection_steps - 2:  # Log first 3 and last
-                        with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                        with open_debug_log() as f:
                             p_list = list(p) if hasattr(p, '__iter__') else p
                             p_hash = hash(tuple(p))
                             f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"phase_transition.py:289","message":"Collection step (adaptive)","data":{{"alpha":{a},"run_idx":{run_idx},"step_idx":{step_idx},"p":{p_list},"p_hash":{p_hash}}}}}\n')
@@ -311,7 +312,7 @@ def run_phase_transition(n=15, m=3, alpha_grid=None, eta=0.2, beta=3.0, seed=0, 
                 p_first_last_diff = np.linalg.norm(p_first - p_last)
                 
                 # #region agent log
-                with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                with open_debug_log() as f:
                     avg_p_list = list(avg_p) if hasattr(avg_p, '__iter__') else avg_p
                     final_ps_sample_list = list(final_ps[0]) if len(final_ps) > 0 and hasattr(final_ps[0], '__iter__') else (final_ps[0] if len(final_ps) > 0 else None)
                     f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"phase_transition.py:303","message":"Run complete (adaptive)","data":{{"alpha":{a},"run_idx":{run_idx},"avg_p":{avg_p_list},"dist":{dist},"final_ps_sample":{final_ps_sample_list},"p_all_same":{p_all_same},"p_first_last_diff":{p_first_last_diff}}}}}\n')
@@ -325,7 +326,7 @@ def run_phase_transition(n=15, m=3, alpha_grid=None, eta=0.2, beta=3.0, seed=0, 
         dists_std = np.array([np.std(dists, ddof=1) if len(dists) > 1 else 0.0 for dists in dists_all_runs])
         
         # #region agent log
-        with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+        with open_debug_log() as f:
             for i, (a, dists) in enumerate(zip(alphas, dists_all_runs)):
                 dists_list = [float(d) for d in dists]  # Convert to list of floats for JSON
                 all_dists_identical = all(np.isclose(dists[0], d) for d in dists) if len(dists) > 0 else True
@@ -344,7 +345,7 @@ def compute_threshold_alpha(alphas, dists):
     where dist > (dist_at_alpha_1 + epsilon).
     """
     # #region agent log
-    with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+    with open_debug_log() as f:
         f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"phase_transition.py:346","message":"compute_threshold_alpha entry","data":{{"alphas_len":{len(alphas)},"dists_len":{len(dists)}}}}}\n')
     # #endregion
     
@@ -356,7 +357,7 @@ def compute_threshold_alpha(alphas, dists):
     threshold = distance_at_alpha_1 + ALPHA_EPSILON
     
     # #region agent log
-    with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+    with open_debug_log() as f:
         f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"phase_transition.py:355","message":"Threshold calculation","data":{{"distance_at_alpha_1":{distance_at_alpha_1},"ALPHA_EPSILON":{ALPHA_EPSILON},"threshold":{threshold}}}}}\n')
     # #endregion
     
@@ -370,21 +371,21 @@ def compute_threshold_alpha(alphas, dists):
             if i + 1 < len(alphas):
                 result = alphas[i + 1]
                 # #region agent log
-                with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                with open_debug_log() as f:
                     f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"F","location":"phase_transition.py:362","message":"Found threshold (i+1 case)","data":{{"i":{i},"dists_i":{dists[i]},"alphas_i":{alphas[i]},"alphas_i_plus_1":{alphas[i+1]},"result":{result}}}}}\n')
                 # #endregion
                 return result
             else:
                 result = alphas[i]
                 # #region agent log
-                with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                with open_debug_log() as f:
                     f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"G","location":"phase_transition.py:364","message":"Found threshold (i case, at end)","data":{{"i":{i},"dists_i":{dists[i]},"alphas_i":{alphas[i]},"result":{result}}}}}\n')
                 # #endregion
                 return result
     
     # If no alpha exceeds the threshold, return None
     # #region agent log
-    with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+    with open_debug_log() as f:
         f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"H","location":"phase_transition.py:367","message":"No threshold found","data":{{}}}}\n')
     # #endregion
     return None
@@ -399,7 +400,7 @@ def find_before_after_alphas(alphas, threshold_alpha):
     - alpha_after is the threshold alpha itself (the point at the threshold)
     """
     # #region agent log
-    with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+    with open_debug_log() as f:
         alphas_list = [float(a) for a in alphas] if threshold_alpha is not None and len(alphas) > 0 else []
         f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"phase_transition.py:378","message":"find_before_after_alphas entry","data":{{"threshold_alpha":{threshold_alpha},"alphas_len":{len(alphas) if threshold_alpha is not None else 0},"alphas_min":{float(alphas.min()) if threshold_alpha is not None and len(alphas) > 0 else None},"alphas_max":{float(alphas.max()) if threshold_alpha is not None and len(alphas) > 0 else None},"alphas_list":{alphas_list}}}}}\n')
     # #endregion
@@ -416,7 +417,7 @@ def find_before_after_alphas(alphas, threshold_alpha):
         threshold_idx = threshold_idx[0]
     
     # #region agent log
-    with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+    with open_debug_log() as f:
         if threshold_idx >= 2:
             before_idx = 1  # Use index 1 (alpha=0.5) which is clearly in non-tie region
         elif threshold_idx == 1:
@@ -445,7 +446,7 @@ def find_before_after_alphas(alphas, threshold_alpha):
         alpha_before = alphas[0] if len(alphas) > 0 else None
     
     # #region agent log
-    with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+    with open_debug_log() as f:
         alpha_before_rounded = round(alpha_before, 3) if alpha_before is not None else None
         alpha_after_rounded = round(alpha_after, 3) if alpha_after is not None else None
         threshold_rounded = round(threshold_alpha, 3) if threshold_alpha is not None else None

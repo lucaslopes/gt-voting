@@ -1,4 +1,4 @@
-"""GT (Game Theory) aggregation mechanism implementing the Rivest-Shen GT voting system."""
+"""GT aggregation mechanism for the maximal-lottery rule described by Rivest and Shen."""
 
 import numpy as np
 from numba import njit
@@ -107,8 +107,8 @@ class GT(BaseMechanism):
     """
     GT (Game Theory) aggregation mechanism.
     
-    Implements the Rivest-Shen GT voting system, which models the election as a zero-sum
-    game and finds the optimal mixed strategy using linear programming. The mechanism
+    Implements the GT method described by Rivest and Shen, which models the election as a
+    zero-sum game and finds an optimal mixed strategy using linear programming. The mechanism
     computes a margin matrix for all pairwise comparisons and solves for the Nash
     equilibrium strategy, which provides the probability distribution over candidates.
     
@@ -130,9 +130,9 @@ class GT(BaseMechanism):
     
     def aggregate(self, reported_rankings):
         """
-        Aggregate rankings using the GT (Game Theory) voting system.
+        Aggregate rankings using the margin-based GT method.
         
-        The GT system:
+        The GT method:
         1. Computes a margin matrix M where M[i,j] = (votes i > j) - (votes j > i)
         2. Models the election as a zero-sum game with payoff matrix M
         3. Finds the Nash equilibrium mixed strategy using linear programming

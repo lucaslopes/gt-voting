@@ -1,6 +1,7 @@
 """Core simulation logic for dashboard view."""
 
 import numpy as np
+from core.debug_log import open_debug_log
 from core.utils import spawn_rng
 from core.phase_transition import (
     run_phase_transition,
@@ -38,14 +39,14 @@ def run_dashboard_simulation(n=15, m=3, seed=0, baselines=None, eta=0.2, beta=3.
     alphas, dists_mean, _ = run_phase_transition(n=n, m=m, seed=seed, rng=rng_phase, baselines=baselines)
     
     # #region agent log
-    with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+    with open_debug_log() as f:
         f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"R","location":"dashboard_core.py:40","message":"After phase transition, before dashboard simulations","data":{{"rng_phase_state":{rng_phase.bit_generator.state if hasattr(rng_phase, "bit_generator") else "unknown"}}}}}\n')
     # #endregion
     threshold_alpha = compute_threshold_alpha(alphas, dists_mean)
     alpha_before, alpha_after = find_before_after_alphas(alphas, threshold_alpha)
     
     # #region agent log
-    with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+    with open_debug_log() as f:
         f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"I","location":"dashboard_core.py:40","message":"After find_before_after_alphas","data":{{"threshold_alpha":{threshold_alpha},"alpha_before":{alpha_before},"alpha_after":{alpha_after},"alpha_before_equals_threshold":{alpha_before == threshold_alpha if alpha_before is not None and threshold_alpha is not None else None}}}}}\n')
     # #endregion
     
@@ -54,7 +55,7 @@ def run_dashboard_simulation(n=15, m=3, seed=0, baselines=None, eta=0.2, beta=3.
         alpha_after = 0.60
         
     # #region agent log
-    with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+    with open_debug_log() as f:
         f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"J","location":"dashboard_core.py:44","message":"Final alpha values","data":{{"threshold_alpha":{threshold_alpha},"alpha_before":{alpha_before},"alpha_after":{alpha_after},"alpha_before_equals_threshold":{alpha_before == threshold_alpha if alpha_before is not None and threshold_alpha is not None else None}}}}}\n')
     # #endregion
         
@@ -76,7 +77,7 @@ def run_dashboard_simulation(n=15, m=3, seed=0, baselines=None, eta=0.2, beta=3.
             run_seed = (seed + run_idx) if seed is not None else None
             rng_before = np.random.default_rng(run_seed)
             # #region agent log
-            with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+            with open_debug_log() as f:
                 f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"V","location":"dashboard_core.py:73","message":"Dashboard RNG initialization for alpha_before","data":{{"alpha_before":{alpha_before},"seed":{seed},"run_idx":{run_idx},"run_seed":{run_seed},"baselines_provided":{baselines is not None}}}}}\n')
             # #endregion
             sys_before = IterativeVotingSystem(m=m, n=n, alpha=alpha_before, eta=eta, beta=beta, rng=rng_before, baselines=baselines, use_expected_score=False)
@@ -95,7 +96,7 @@ def run_dashboard_simulation(n=15, m=3, seed=0, baselines=None, eta=0.2, beta=3.
             else:
                 p_initial_baseline = None
                 dist_initial = None
-            with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+            with open_debug_log() as f:
                 sys_baselines_list = list(sys_before.baselines) if hasattr(sys_before.baselines, '__iter__') else sys_before.baselines
                 f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"X","location":"dashboard_core.py:78","message":"Dashboard system initialized for alpha_before","data":{{"alpha_before":{alpha_before},"x_initial_hash":{x_initial_hash},"x_initial_sum":{float(np.sum(x_initial))},"sys_baselines":{sys_baselines_list},"p_initial_baseline":{list(p_initial_baseline) if p_initial_baseline is not None else None},"dist_initial":{dist_initial}}}}}\n')
             # #endregion
@@ -113,12 +114,12 @@ def run_dashboard_simulation(n=15, m=3, seed=0, baselines=None, eta=0.2, beta=3.
             p_after_burnin = sys_before.step()  # Get state after burn-in
             x_after_burnin = sys_before.x.copy()
             x_after_burnin_hash = hash(tuple(x_after_burnin.flatten()))
-            with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+            with open_debug_log() as f:
                 f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"Y","location":"dashboard_core.py:95","message":"Dashboard burn-in steps","data":{{"alpha_before":{alpha_before},"p_after_step_1":{list(p_after_step_1) if p_after_step_1 is not None else None},"p_after_step_2":{list(p_after_step_2) if p_after_step_2 is not None else None},"x_after_burnin_hash":{x_after_burnin_hash}}}}}\n')
             # #endregion
             center = np.array([1 / m] * m)
             dist_after_burnin = np.linalg.norm(p_after_burnin - center)
-            with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+            with open_debug_log() as f:
                 f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"P","location":"dashboard_core.py:72","message":"After burn_in at alpha_before","data":{{"alpha_before":{alpha_before},"burn_in":{burn_in},"p_after_burnin":{list(p_after_burnin)},"dist_after_burnin":{dist_after_burnin}}}}}\n')
             # #endregion
             # Then collect trajectory (start from the step we already took)
@@ -129,7 +130,7 @@ def run_dashboard_simulation(n=15, m=3, seed=0, baselines=None, eta=0.2, beta=3.
                 # #region agent log
                 if step_idx < 5 or step_idx == 50 or step_idx == 100 or step_idx == 200 or step_idx == T - 2:
                     dist_step = np.linalg.norm(p - center)
-                    with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+                    with open_debug_log() as f:
                         f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"S","location":"dashboard_core.py:91","message":"Trajectory step at alpha_before","data":{{"alpha_before":{alpha_before},"step_idx":{step_idx},"p":{list(p)},"dist":{dist_step}}}}}\n')
                 # #endregion
             traj_before = np.array(traj_before)
@@ -153,7 +154,7 @@ def run_dashboard_simulation(n=15, m=3, seed=0, baselines=None, eta=0.2, beta=3.
             # Also compute final step
             final_p = traj_before[-1] if len(traj_before) > 0 else None
             dist_final = np.linalg.norm(final_p - center) if final_p is not None else None
-            with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+            with open_debug_log() as f:
                 f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"N","location":"dashboard_core.py:113","message":"Dashboard simulation at alpha_before (with burn_in)","data":{{"alpha_before":{alpha_before},"burn_in":{burn_in},"T":{T},"avg_p_dashboard":{list(avg_p_dashboard)},"dist_dashboard":{dist_dashboard},"final_p":{list(final_p) if final_p is not None else None},"dist_final":{dist_final},"dist_first_50_avg":{dist_first_50_avg},"dist_last_50_avg":{np.mean(all_dists[-50:]) if len(all_dists) >= 50 else None}}}}}\n')
             # #endregion
             ternary["traj_before"] = traj_before
@@ -186,7 +187,7 @@ def run_dashboard_simulation(n=15, m=3, seed=0, baselines=None, eta=0.2, beta=3.
             p_after_burnin = sys_after.step()  # Get state after burn-in
             center = np.array([1 / m] * m)
             dist_after_burnin = np.linalg.norm(p_after_burnin - center)
-            with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+            with open_debug_log() as f:
                 f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"Q","location":"dashboard_core.py:100","message":"After burn_in at alpha_after","data":{{"alpha_after":{alpha_after},"burn_in":{burn_in},"p_after_burnin":{list(p_after_burnin)},"dist_after_burnin":{dist_after_burnin}}}}}\n')
             # #endregion
             # Then collect trajectory (start from the step we already took)
@@ -211,7 +212,7 @@ def run_dashboard_simulation(n=15, m=3, seed=0, baselines=None, eta=0.2, beta=3.
             # Also compute final step
             final_p = traj_after[-1] if len(traj_after) > 0 else None
             dist_final = np.linalg.norm(final_p - center) if final_p is not None else None
-            with open('/Users/lucas/Code/gt-voting/.cursor/debug.log', 'a') as f:
+            with open_debug_log() as f:
                 f.write(f'{{"sessionId":"debug-session","runId":"run1","hypothesisId":"O","location":"dashboard_core.py:95","message":"Dashboard simulation at alpha_after (with burn_in)","data":{{"alpha_after":{alpha_after},"burn_in":{burn_in},"T":{T},"avg_p_dashboard":{list(avg_p_dashboard)},"dist_dashboard":{dist_dashboard},"final_p":{list(final_p) if final_p is not None else None},"dist_final":{dist_final}}}}}\n')
             # #endregion
             ternary["traj_after"] = traj_after
