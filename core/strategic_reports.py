@@ -73,9 +73,9 @@ def generate_strategic_reports(
                 voter and time step, the probability mass the internal strategy
                 distribution assigns to the selected (most likely) ranking.
             "p_history": numpy array of shape [T, m] giving instantaneous
-                outcomes p^t for t=1..T.
+                outcomes p^t for t=1..T, with columns indexed by numeric candidate ID.
             "p_avg_history": numpy array of shape [T, m] giving time-averaged
-                outcomes \\hat{p}^t for t=1..T.
+                outcomes \\hat{p}^t for t=1..T in the same candidate order.
             "payoffs_history": list of T dicts, where payoffs_history[t-1] maps
                 edge tuples (u, v) to payoff values S^uv = <p_tilde, r_v - r_u>
                 at time step t (for t=1..T).

@@ -6,7 +6,7 @@ import matplotlib.colors as mcolors
 from matplotlib.patches import Patch
 import json
 import os
-from core.aggregator_core import aggregate_rankings
+from core.aggregator_core import aggregate_rankings, reorder_probabilities
 from core.rankings_core import generate_rankings, candidate_labels
 from plots.BasePlot import BasePlot
 
@@ -88,6 +88,10 @@ class ProportionsPlot(BasePlot):
             first_ranking = all_rankings[0]
             candidates = list(first_ranking)
             m = len(candidates)
+
+            def aggregate_for_plot(rankings):
+                probabilities = aggregate_rankings(rankings, mechanism=mechanism)
+                return reorder_probabilities(probabilities, rankings[0], candidates)
             
             # Determine if we should use precomputed outcomes or compute from strategies
             use_precomputed = False
@@ -100,7 +104,7 @@ class ProportionsPlot(BasePlot):
                     # p_avg_history has shape [T, m] for t=1..T (doesn't include t=0)
                     # We need to compute t=0 from strategies and prepend it
                     rankings_at_t0 = [all_rankings[strategies[i, 0]] for i in range(n_voters)]
-                    probs_t0 = aggregate_rankings(rankings_at_t0, mechanism=mechanism)
+                    probs_t0 = aggregate_for_plot(rankings_at_t0)
                     # Prepend t=0 to p_avg_history
                     probabilities_over_time = [probs_t0] + p_avg_history.tolist()
                     # Time steps: t=0 to t=T (where T is the last index in p_avg_history)
@@ -118,7 +122,7 @@ class ProportionsPlot(BasePlot):
                         rankings_at_t = [all_rankings[strategies[i, t]] for i in range(n_voters)]
                         
                         # Aggregate to get probabilities using user's specified mechanism
-                        probs = aggregate_rankings(rankings_at_t, mechanism=mechanism)
+                        probs = aggregate_for_plot(rankings_at_t)
                         probs_array = np.array(probs)
                         
                         
@@ -152,7 +156,7 @@ class ProportionsPlot(BasePlot):
                 elif p_history.shape[0] == n_timesteps - 1:
                     # p_history might be missing t=0, compute it from strategies and prepend
                     rankings_at_t0 = [all_rankings[strategies[i, 0]] for i in range(n_voters)]
-                    probs_t0 = aggregate_rankings(rankings_at_t0, mechanism=mechanism)
+                    probs_t0 = aggregate_for_plot(rankings_at_t0)
                     probabilities_over_time = [probs_t0] + p_history.tolist()
                     time_steps = list(range(n_timesteps))
                     use_precomputed = True
@@ -170,7 +174,7 @@ class ProportionsPlot(BasePlot):
                     rankings_at_t = [all_rankings[strategies[i, t]] for i in range(n_voters)]
                     
                     # Aggregate to get probabilities
-                    probs = aggregate_rankings(rankings_at_t, mechanism=mechanism)
+                    probs = aggregate_for_plot(rankings_at_t)
                     probabilities_over_time.append(probs)
                     time_steps.append(t)
         

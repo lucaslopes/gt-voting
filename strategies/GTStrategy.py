@@ -4,7 +4,7 @@ import numpy as np
 from itertools import permutations
 from numba import njit
 from strategies.BaseStrategy import BaseStrategy
-from core.aggregator_core import aggregate_rankings
+from core.aggregator_core import aggregate_rankings, reorder_probabilities
 from core.rankings_core import generate_rankings
 from core.utils import spawn_rng
 from core.graph_utils import compute_degrees, compute_and_store_payoffs
@@ -268,8 +268,9 @@ class GTStrategy(BaseStrategy):
         n, candidates = self.validate_honest_reports(honest_reports, m)
 
         if aggregation_backend == "rust":
-            from core.backends import require_native_backend
+            from core.backends import require_native_backend, validate_rust_configuration
 
+            validate_rust_configuration(m)
             require_native_backend()
         
         # Initialize RNG
@@ -345,8 +346,8 @@ class GTStrategy(BaseStrategy):
                     x, all_rankings, rng
                 )
                 if aggregation_backend == "python" and aggregation_selector == "lp":
-                    # Preserve the historical path for all existing callers.
-                    p_t = np.array(aggregate_rankings(current_rankings, mechanism="GT"))
+                    probabilities = aggregate_rankings(current_rankings, mechanism="GT")
+                    candidates = current_rankings[0]
                 else:
                     from core.backends import aggregate_rankings as aggregate_with_backend
 
@@ -356,9 +357,11 @@ class GTStrategy(BaseStrategy):
                         backend=aggregation_backend,
                         selector=aggregation_selector,
                     )
-                    p_t = np.array(aggregate_result["probabilities"])
+                    probabilities = aggregate_result["probabilities"]
+                    candidates = aggregate_result["candidates"]
                     if aggregation_metadata is None:
                         aggregation_metadata = aggregate_result["metadata"]
+                p_t = np.array(reorder_probabilities(probabilities, candidates, range(m)))
             
             # Store instantaneous outcome p^t
             p_history.append(p_t.copy())

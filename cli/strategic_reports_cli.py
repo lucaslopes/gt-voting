@@ -10,6 +10,7 @@ from core.cache_utils import (
     load_cached_run,
     save_cached_run,
     STRATEGIC_REPORTS_CACHE_SCHEMA_VERSION,
+    STRATEGIC_REPORTS_GT_CACHE_SCHEMA_VERSION,
     get_run_path,
 )
 from plots.plot_voter_strategies import plot_voter_strategies
@@ -346,13 +347,18 @@ Examples:
     if args.use_expected_score:
         cache_prefix_parts.append("expected")
 
+    cache_schema_version = (
+        STRATEGIC_REPORTS_GT_CACHE_SCHEMA_VERSION
+        if args.strategy == "gt_strategy" and not args.use_expected_score
+        else STRATEGIC_REPORTS_CACHE_SCHEMA_VERSION
+    )
     cached = None
     if not args.force_recompute:
         cached, _meta = load_cached_run(
             command="strategic_reports",
             params=cache_params,
             prefix_parts=cache_prefix_parts,
-            schema_version=STRATEGIC_REPORTS_CACHE_SCHEMA_VERSION,
+            schema_version=cache_schema_version,
         )
         if cached is not None:
             run_dir = get_run_path(command="strategic_reports", params=cache_params, prefix_parts=cache_prefix_parts)
@@ -396,14 +402,14 @@ Examples:
                 aggregation_backend=args.aggregation_backend,
                 aggregation_selector=args.aggregation_selector,
             )
-        except (BackendUnavailableError, ValueError) as e:
+        except (BackendUnavailableError, OverflowError, ValueError) as e:
             parser.error(str(e))
 
         save_cached_run(
             command="strategic_reports",
             params=cache_params,
             prefix_parts=cache_prefix_parts,
-            schema_version=STRATEGIC_REPORTS_CACHE_SCHEMA_VERSION,
+            schema_version=cache_schema_version,
             data={"n": n, "honest_reports": honest_reports, "results": results},
         )
     else:

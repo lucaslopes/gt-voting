@@ -1,6 +1,7 @@
 """Core simulation logic for dashboard view."""
 
 import numpy as np
+from core.aggregator_core import aggregate_rankings, reorder_probabilities
 from core.debug_log import open_debug_log
 from core.utils import spawn_rng
 from core.phase_transition import (
@@ -86,11 +87,12 @@ def run_dashboard_simulation(n=15, m=3, seed=0, baselines=None, eta=0.2, beta=3.
             x_initial_hash = hash(tuple(x_initial.flatten()))
             # Compute initial baseline outcome from baselines
             from core.honest_reports import baseline_indices_to_rankings
-            from mechanisms.GT import GT
             if baselines is not None:
                 initial_rankings = baseline_indices_to_rankings(baselines, m)
-                gt_initial = GT()
-                p_initial_baseline = np.array(gt_initial.aggregate(initial_rankings))
+                probabilities = aggregate_rankings(initial_rankings)
+                p_initial_baseline = np.array(
+                    reorder_probabilities(probabilities, initial_rankings[0], range(m))
+                )
                 center = np.array([1 / m] * m)
                 dist_initial = np.linalg.norm(p_initial_baseline - center)
             else:
@@ -161,10 +163,11 @@ def run_dashboard_simulation(n=15, m=3, seed=0, baselines=None, eta=0.2, beta=3.
             # Store initial baseline outcome for ternary plot "Start" point
             if baselines is not None:
                 from core.honest_reports import baseline_indices_to_rankings
-                from mechanisms.GT import GT
                 initial_rankings = baseline_indices_to_rankings(baselines, m)
-                gt_initial = GT()
-                p_initial_baseline = np.array(gt_initial.aggregate(initial_rankings))
+                probabilities = aggregate_rankings(initial_rankings)
+                p_initial_baseline = np.array(
+                    reorder_probabilities(probabilities, initial_rankings[0], range(m))
+                )
                 ternary["p_initial_baseline"] = p_initial_baseline
             else:
                 ternary["p_initial_baseline"] = None
@@ -199,10 +202,11 @@ def run_dashboard_simulation(n=15, m=3, seed=0, baselines=None, eta=0.2, beta=3.
             # Store initial baseline outcome for ternary plot "Start" point (same as before)
             if baselines is not None and ternary.get("p_initial_baseline") is None:
                 from core.honest_reports import baseline_indices_to_rankings
-                from mechanisms.GT import GT
                 initial_rankings = baseline_indices_to_rankings(baselines, m)
-                gt_initial = GT()
-                p_initial_baseline = np.array(gt_initial.aggregate(initial_rankings))
+                probabilities = aggregate_rankings(initial_rankings)
+                p_initial_baseline = np.array(
+                    reorder_probabilities(probabilities, initial_rankings[0], range(m))
+                )
                 ternary["p_initial_baseline"] = p_initial_baseline
             # #region agent log
             center = np.array([1 / m] * m)

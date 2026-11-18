@@ -6,12 +6,13 @@ import matplotlib.pyplot as plt
 from core.honest_reports import generate_honest_reports, parse_baselines
 from core.rankings_core import generate_rankings, candidate_labels
 from core.strategic_reports import generate_strategic_reports
-from core.aggregator_core import aggregate_rankings
+from core.aggregator_core import aggregate_rankings, reorder_probabilities
 from core.cache_utils import (
     normalize_baselines_str,
     load_cached_run,
     save_cached_run,
     PROPORTIONS_CACHE_SCHEMA_VERSION,
+    PROPORTIONS_GT_CACHE_SCHEMA_VERSION,
     get_run_path,
 )
 from plots.plot_proportions import plot_proportions
@@ -288,13 +289,18 @@ Examples:
         if args.baselines:
             cache_prefix_parts.append("baselines")
 
+        cache_schema_version = (
+            PROPORTIONS_GT_CACHE_SCHEMA_VERSION
+            if args.strategy == "gt_strategy" and not args.use_expected_score
+            else PROPORTIONS_CACHE_SCHEMA_VERSION
+        )
         cached = None
         if not args.force_recompute:
             cached, _meta = load_cached_run(
                 command="proportions",
                 params=cache_params,
                 prefix_parts=cache_prefix_parts,
-                schema_version=PROPORTIONS_CACHE_SCHEMA_VERSION,
+                schema_version=cache_schema_version,
             )
             if cached is not None:
                 run_dir = get_run_path(command="proportions", params=cache_params, prefix_parts=cache_prefix_parts)
@@ -340,7 +346,7 @@ Examples:
                 command="proportions",
                 params=cache_params,
                 prefix_parts=cache_prefix_parts,
-                schema_version=PROPORTIONS_CACHE_SCHEMA_VERSION,
+                schema_version=cache_schema_version,
                 data={"n": n, "honest_reports": honest_reports, "strategies_result": strategies_result},
             )
         else:
@@ -396,6 +402,7 @@ Examples:
                 # First, print t=0 (instantaneous, no averaging yet)
                 rankings_at_t0 = [all_rankings[strategies[i, 0]] for i in range(n)]
                 probs_t0 = aggregate_rankings(rankings_at_t0, mechanism=args.mechanism)
+                probs_t0 = reorder_probabilities(probs_t0, rankings_at_t0[0], range(args.m))
                 print(f"Time-averaged \\hat{{p}}^0: {probs_t0}")
                 # Then print time-averaged outcomes for t=1 to t=T-1 (from p_avg_history)
                 for t_idx, p_avg in enumerate(p_avg_history):
@@ -406,12 +413,13 @@ Examples:
                 # Print t=0 (instantaneous, no averaging yet)
                 rankings_at_t0 = [all_rankings[strategies[i, 0]] for i in range(n)]
                 probs_t0 = aggregate_rankings(rankings_at_t0, mechanism=args.mechanism)
+                probs_t0 = reorder_probabilities(probs_t0, rankings_at_t0[0], range(args.m))
                 print(f"Time-averaged \\hat{{p}}^0: {probs_t0}")
                 # Compute and print time-averaged for t=1 to t=T-1
                 for t in range(1, args.T):
                     rankings_at_t = [all_rankings[strategies[i, t]] for i in range(n)]
                     probs = aggregate_rankings(rankings_at_t, mechanism=args.mechanism)
-                    p_sum += np.array(probs)
+                    p_sum += reorder_probabilities(probs, rankings_at_t[0], range(args.m))
                     p_avg = p_sum / t
                     print(f"Time-averaged \\hat{{p}}^{t}: {p_avg}")
         else:
@@ -420,6 +428,7 @@ Examples:
             for t in range(args.T + 1):
                 rankings_at_t = [all_rankings[strategies[i, t]] for i in range(n)]
                 probs = aggregate_rankings(rankings_at_t, mechanism=args.mechanism)
+                probs = reorder_probabilities(probs, rankings_at_t[0], range(args.m))
                 print(f"Time step t={t}: {probs}")
         
         # Print time-averaged outcomes if available and not already printed
@@ -591,10 +600,11 @@ Examples:
         print(f"  Mechanism: {args.mechanism}")
         print()
         
-        # Print probabilities
+        # Cached probabilities use first-ballot order. Relabel for display.
+        probs_by_id = reorder_probabilities(probs, reported_rankings[0], range(args.m))
         labels = candidate_labels(args.m)
         print("Probability Distribution:")
-        for i, prob in enumerate(probs):
+        for i, prob in enumerate(probs_by_id):
             candidate_label = labels[i] if not args.show_integers else str(i)
             print(f"  Candidate {candidate_label}: {prob:.4f}")
         print()

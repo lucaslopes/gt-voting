@@ -106,6 +106,16 @@ def validate_backend_options(backend, selector):
     return selector
 
 
+def validate_rust_configuration(candidate_count, mechanism="GT"):
+    """Reject unsupported native inputs before allocating simulation state."""
+    if mechanism != "GT":
+        raise BackendUnavailableError("the Rust backend supports mechanism='GT' only")
+    if candidate_count > _RUST_MAX_CANDIDATES:
+        raise BackendUnavailableError(
+            f"Rust aggregation supports at most {_RUST_MAX_CANDIDATES} candidates"
+        )
+
+
 @lru_cache(maxsize=1)
 def _version():
     try:
@@ -215,12 +225,7 @@ def aggregate_rankings(
     elif backend == "auto":
         used, fallback = "python", _AUTO_DISABLED_REASON
     else:
-        if mechanism != "GT":
-            raise BackendUnavailableError("the Rust backend currently supports mechanism='GT' only")
-        if len(candidates) > _RUST_MAX_CANDIDATES:
-            raise BackendUnavailableError(
-                f"Rust aggregation supports at most {_RUST_MAX_CANDIDATES} candidates"
-            )
+        validate_rust_configuration(len(candidates), mechanism)
         native = require_native_backend()
         used = "rust"
 

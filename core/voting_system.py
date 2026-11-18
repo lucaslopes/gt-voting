@@ -3,6 +3,7 @@
 import numpy as np
 from scipy.optimize import linprog
 from itertools import permutations
+from core.aggregator_core import reorder_probabilities
 from core.utils import spawn_rng
 from core.graph_utils import compute_degrees
 from strategies import get_strategy_instance
@@ -34,7 +35,7 @@ class IterativeVotingSystem:
             aggregation_selector: Solver selector. ``lp`` preserves the Python
                 default; Rust requires ``vertex`` or ``minimum_norm`` explicitly.
         """
-        from core.backends import validate_backend_options
+        from core.backends import validate_backend_options, validate_rust_configuration
 
         aggregation_selector = validate_backend_options(
             aggregation_backend, aggregation_selector
@@ -53,6 +54,8 @@ class IterativeVotingSystem:
                 "expected-score dynamics use the Python margin-matrix solver "
                 "and support aggregation_selector='lp' only"
             )
+        if aggregation_backend == "rust":
+            validate_rust_configuration(m, mechanism)
         self.m = m
         self.n = n
         self.alpha = alpha
@@ -253,6 +256,7 @@ class IterativeVotingSystem:
         return M
 
     def step(self):
+        """Advance one round and return probabilities indexed by numeric candidate ID."""
         # 1. Aggregate (Play step - Algorithm 1 line 3)
         # Delegate to GTStrategy to handle sampling/aggregation logic
         if self.use_expected_score:
@@ -292,9 +296,10 @@ class IterativeVotingSystem:
             ):
                 from core.aggregator_core import aggregate_rankings
 
-                p_t = np.array(
-                    aggregate_rankings(sampled_rankings, mechanism=self.mechanism)
+                probabilities = aggregate_rankings(
+                    sampled_rankings, mechanism=self.mechanism
                 )
+                candidates = sampled_rankings[0]
                 self.last_aggregation_metadata = None
             else:
                 from core.backends import aggregate_rankings as aggregate_with_backend
@@ -305,8 +310,10 @@ class IterativeVotingSystem:
                     backend=self.aggregation_backend,
                     selector=self.aggregation_selector,
                 )
-                p_t = np.array(aggregate_result["probabilities"])
+                probabilities = aggregate_result["probabilities"]
+                candidates = aggregate_result["candidates"]
                 self.last_aggregation_metadata = aggregate_result["metadata"]
+            p_t = np.array(reorder_probabilities(probabilities, candidates, range(self.m)))
         
         p_tilde = p_t - (1.0 / self.m)
         

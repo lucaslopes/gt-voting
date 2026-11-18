@@ -83,6 +83,12 @@ outcomes = result["p_history"]
 provenance = result["aggregation_metadata"]
 ```
 
+The columns of `p_history` and `p_avg_history` always follow numeric candidate
+IDs (`0` through `m - 1`), even if the first sampled ballot orders them
+differently. We apply the same order before calculating payoffs and updating
+reports. This corrects older simulations that could associate a probability
+with the wrong candidate. The CLI recomputes affected cached trajectories.
+
 The `strategic-reports` CLI exposes the same opt-in path:
 
 ```sh
