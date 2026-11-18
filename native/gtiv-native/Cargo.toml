@@ -1,0 +1,17 @@
+[package]
+name = "gtiv-native-python"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+name = "gtiv_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+gtiv-three = { path = "../gtiv-three" }
+pyo3 = { version = "0.27.2", features = ["extension-module"] }
+
+[build-dependencies]
+sha2 = "0.10.9"
