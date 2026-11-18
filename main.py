@@ -8,6 +8,9 @@ from cli.proportions_cli import main as proportions_main
 from cli.ternary_cli import main as ternary_main
 from cli.phase_transition_cli import main as phase_transition_main
 from cli.dashboard_cli import main as dashboard_main
+from cli.aggregate_cli import add_arguments as add_aggregate_arguments
+from cli.aggregate_cli import run as run_aggregate
+from core.backends import BackendUnavailableError
 from mechanisms import list_mechanisms
 
 
@@ -19,6 +22,14 @@ def main():
     )
     
     subparsers = parser.add_subparsers(dest='command', help='Available commands', required=True)
+
+    # Exact, machine-readable aggregation of caller-provided complete ballots.
+    aggregate_parser = subparsers.add_parser(
+        'aggregate',
+        help='Aggregate complete rankings and report backend provenance',
+        description='Aggregate explicit complete rankings as JSON',
+    )
+    add_aggregate_arguments(aggregate_parser)
     
     # Rankings subcommand
     rankings_parser = subparsers.add_parser(
@@ -918,6 +929,11 @@ def main():
         if getattr(args, "force_recompute", False):
             dashboard_args.append('--force-recompute')
         dashboard_main(dashboard_args)
+    elif args.command == 'aggregate':
+        try:
+            print(run_aggregate(args))
+        except (BackendUnavailableError, ValueError) as exc:
+            parser.error(str(exc))
 
 
 if __name__ == "__main__":

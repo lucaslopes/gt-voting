@@ -16,11 +16,16 @@ The Python distribution and its only installed command are both named `gtiv`. Th
 
 This project is licensed under the GNU General Public License v3 or later; see `LICENSE`.
 
+The optional Rust GT aggregation backend, its Python API, sampled simulation
+integration, and `gtiv aggregate` command are documented in
+[`docs/guides/RUST_BACKEND.md`](docs/guides/RUST_BACKEND.md). Python/SciPy
+remains the default; Rust dispatch is explicit.
+
 ## CLI Usage
 
 The unified CLI is implemented in `main.py` and provides the `rankings`,
 `honest-reports`, `strategic-reports`, `proportions`, `ternary`,
-`phase-transition`, and `dashboard` subcommands.
+`phase-transition`, `dashboard`, and `aggregate` subcommands.
 
 ### Basic Usage
 

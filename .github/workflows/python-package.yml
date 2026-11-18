@@ -90,6 +90,26 @@ jobs:
         run: |
           python -m pip install --no-deps --no-build-isolation --force-reinstall dist/native-sdist/gtiv_native-*.tar.gz
           python native/gtiv-native/smoke_test.py
+      - name: Exercise the installed Rust aggregate CLI when available
+        if: hashFiles('cli/aggregate_cli.py') != '' && hashFiles('native/gtiv-native/Cargo.toml') != ''
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          gtiv aggregate --ballot 11,7 --ballot 11,7 --ballot 7,11 --backend rust --selector minimum_norm > aggregate-result.json
+          python - <<'PY'
+          import json
+          from importlib.metadata import version
+          from pathlib import Path
+
+          result = json.loads(Path("aggregate-result.json").read_text())
+          assert result["candidates"] == [11, 7]
+          assert result["probabilities"] == [1.0, 0.0]
+          assert result["metadata"]["backend_used"] == "rust"
+          assert result["metadata"]["distribution"] == "gtiv"
+          assert result["metadata"]["distribution_version"] == version("gtiv")
+          assert result["metadata"]["native_api_version"] == 1
+          assert len(result["metadata"]["native_binary_sha256"]) == 64
+          PY
       - name: Test Python APIs and CLIs when tests are present
         if: hashFiles('tests/**/*.py') != ''
         run: python -m unittest discover -s tests -v

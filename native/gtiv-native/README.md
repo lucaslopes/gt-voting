@@ -24,6 +24,7 @@ python -m pip install --no-deps dist/gtiv_native-*.whl
 
 The `gtiv` distribution runs with the Python backend by default. The
 `gtiv_native` module is an internal interface for the optional backend.
+See the [Python and CLI guide](../../docs/guides/RUST_BACKEND.md).
 
 New builds expose `SOURCE_SHA256` and `SOURCE_FINGERPRINT_SCHEMA`. Schema 1
 hashes the Rust aggregation source, binding source, build script, and
